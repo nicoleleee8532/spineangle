@@ -1,0 +1,1428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Measure a scoliosis Cobb angle on your own X-ray and get a personal exercise plan. Runs in your browser; nothing is uploaded.">
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>SpineAngle</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: lightbox viewer on the left, measurement sheet on the right; stacks on phones */
+:root {
+  --bg: #e9eef1;
+  --surface: #ffffff;
+  --ink: #15202a;
+  --muted: #56636e;
+  --rule: #cfd8de;
+  --accent: #0b6a80;
+  --accent-ink: #ffffff;
+  --viewer: #080b0e;
+  --viewer-rule: #1e262d;
+  --mark: #f4b63f;
+  --mark-2: #5fd3e8;
+  --ok: #2f7d4f;
+  --warn: #a5650b;
+  --crit: #b23a35;
+  --band-0: #c9d3d9;
+  --band-1: #8fc4a3;
+  --band-2: #e8c36b;
+  --band-3: #e29a5c;
+  --band-4: #cf6659;
+  --fig-ink: #2b3a46;
+  --fig-soft: #9fb0bc;
+  --fig-arrow: #c2701b;
+  --fig-bag: #e9d6b8;
+  --f-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1418; --surface: #161d22; --ink: #e3e9ed; --muted: #98a6b0; --rule: #2a343c;
+    --accent: #4fb6cc; --accent-ink: #061317; --viewer: #050709; --viewer-rule: #1e262d;
+    --ok: #6cc28e; --warn: #e3a54a; --crit: #ec7d74;
+    --band-0: #4a5660; --band-1: #3f8c62; --band-2: #b89336; --band-3: #b8703a; --band-4: #b04c42;
+    --fig-ink: #d6dee4; --fig-soft: #5d6d79; --fig-arrow: #f0a24e; --fig-bag: #6a5a40;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1418; --surface: #161d22; --ink: #e3e9ed; --muted: #98a6b0; --rule: #2a343c;
+  --accent: #4fb6cc; --accent-ink: #061317; --viewer: #050709; --viewer-rule: #1e262d;
+  --ok: #6cc28e; --warn: #e3a54a; --crit: #ec7d74;
+  --band-0: #4a5660; --band-1: #3f8c62; --band-2: #b89336; --band-3: #b8703a; --band-4: #b04c42;
+  --fig-ink: #d6dee4; --fig-soft: #5d6d79; --fig-arrow: #f0a24e; --fig-bag: #6a5a40;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--f-body); font-size: 15px; line-height: 1.55;
+}
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; padding-block: 4px 18px; border-bottom: 1px solid var(--rule); margin-bottom: 20px; }
+.brand { font-family: var(--f-display); font-weight: 800; font-size: 1.6rem; letter-spacing: -0.01em; margin: 0; }
+.brand span { color: var(--accent); }
+.tag { color: var(--muted); font-size: 0.9rem; margin: 0; }
+
+.notice {
+  display: flex; gap: 10px; align-items: flex-start;
+  border: 1px solid var(--warn); border-radius: 6px; padding: 10px 14px; margin-bottom: 20px;
+  font-size: 0.9rem; background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+}
+.notice strong { white-space: nowrap; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Viewer */
+.viewer { background: var(--viewer); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; color: #d7dee3; }
+@media (min-width: 861px) { .viewer { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); } }
+.viewer-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.chip-src { font-family: var(--f-mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: #8b98a2; }
+.stage { position: relative; display: flex; justify-content: center; align-items: center; min-height: 240px; border: 1px dashed var(--viewer-rule); border-radius: 6px; overflow: hidden; }
+.stage.drag { border-color: var(--mark-2); }
+canvas#cv { display: block; max-width: 100%; max-height: 72vh; touch-action: none; cursor: crosshair; }
+.saved { margin: 0; font-family: var(--f-mono); font-size: 0.72rem; color: #8b98a2; min-height: 1em; }
+.tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; font-size: 0.8rem; color: #a9b4bc; }
+.tools label { display: flex; flex-direction: column; gap: 2px; }
+.tools input[type=range] { width: 100%; accent-color: var(--mark-2); }
+
+.curves { display: flex; flex-wrap: wrap; gap: 6px; }
+.ctab { font: 500 0.8rem/1 var(--f-body); color: #c9d2d8; background: transparent; border: 1px solid #34404a; border-radius: 999px; padding: 7px 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.ctab.on { background: #1b242b; border-color: #8b98a2; color: #fff; }
+.ctab .cv { font-family: var(--f-mono); font-variant-numeric: tabular-nums; color: #8b98a2; }
+.ctab.on .cv { color: #e3e9ed; }
+.ctab.add { border-style: dashed; }
+.ctab.rm { color: #a9b4bc; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.clist { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.clist li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 0.9rem; }
+.clist .cl-v { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.clist .cl-b { color: var(--muted); font-size: 0.8rem; min-width: 5.5em; text-align: right; }
+.clist .dot { outline: 1px solid var(--rule); }
+.exercise h3 { font-family: var(--f-display); font-weight: 600; font-size: 0.98rem; margin: 16px 0 6px; }
+.exercise p { margin: 0 0 8px; max-width: 64ch; }
+.pat { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.pat li { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 4px 8px; align-items: center; }
+.pat li .dot { outline: 1px solid var(--rule); }
+.pat select { grid-column: 2; font: 0.85rem var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; max-width: 100%; }
+.pat .pl { font-size: 0.92rem; min-width: 0; }
+.fine { font-size: 0.8rem; color: var(--muted); }
+.callout { border-left: 3px solid var(--warn); padding: 6px 10px; background: color-mix(in srgb, var(--warn) 8%, var(--surface)); border-radius: 0; }
+.sc { margin: 0 0 10px; padding-left: 1.3em; max-width: 64ch; }
+.sc li { margin-bottom: 6px; }
+.vids { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.vid { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; color: var(--ink); text-decoration: none; background: var(--surface); }
+.vid:hover { border-color: var(--accent); }
+.vid:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vid .play { width: 40px; height: 28px; border-radius: 7px; background: var(--crit); position: relative; }
+.vid .play::after { content: ""; position: absolute; left: 16px; top: 8px; border-left: 11px solid #fff; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+.vid .vt { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 0.9rem; }
+.vid .vt span { color: var(--muted); font-size: 0.78rem; }
+.fig { width: 100%; height: auto; display: block; }
+.fig .fb { fill: none; stroke: var(--fig-soft); stroke-width: 1.6; }
+.fig .fl { fill: none; stroke: var(--fig-soft); stroke-width: 1.6; stroke-linecap: round; }
+.fig .fs { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; }
+.fig .fv { fill: var(--accent); }
+.fig .fa { fill: none; stroke: var(--fig-arrow); stroke-width: 2.4; stroke-linecap: round; }
+.fig .fah { fill: var(--fig-arrow); }
+.fig .ft { fill: var(--muted); font: 9px var(--f-mono); }
+.fig .fw { fill: none; stroke: var(--fig-ink); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.fig circle.fb { fill: none; stroke: var(--fig-ink); stroke-width: 3; }
+.fig.side circle.fb { stroke-width: 4; }
+.fig .ff { stroke: var(--rule); stroke-width: 2; }
+.fig .fbag { fill: var(--fig-bag); stroke: var(--fig-arrow); stroke-width: 1; }
+.exlist { display: flex; flex-direction: column; gap: 12px; }
+.ex { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; align-items: start; border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.ex .ex-fig { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border-radius: 8px; padding: 6px; }
+.ex-body { min-width: 0; }
+.ex h4 { margin: 0 0 2px; font: 600 1rem var(--f-display); }
+.ex .why { margin: 0 0 6px; color: var(--muted); font-size: 0.88rem; }
+.ex .dose { margin: 0 0 6px; }
+.ex .dose span { display: inline-block; font: 500 0.78rem var(--f-mono); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--ink); border-radius: 999px; padding: 4px 9px; }
+.ex .how { margin: 0 0 6px; padding-left: 1.1em; font-size: 0.88rem; }
+.ex .easier, .ex .exnote { font-size: 0.82rem; color: var(--muted); margin: 0 0 6px; }
+.ex .vid { margin-top: 4px; }
+@media (max-width: 560px) { .ex { grid-template-columns: minmax(0, 1fr); } .ex .ex-fig { max-width: 240px; width: 100%; justify-self: center; } }
+.steps-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 520px) { .steps-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.stp { margin: 0; border: 1px solid var(--rule); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.stp figcaption { display: flex; flex-direction: column; gap: 2px; font-size: 0.82rem; }
+.stp figcaption span { color: var(--muted); }
+.mirror { border: 1px solid var(--accent); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.mirror summary { font-weight: 600; color: var(--accent); cursor: pointer; }
+.q { margin-top: 10px; }
+.q p { margin: 0 0 6px; font-size: 0.9rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 0.82rem var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 999px; padding: 7px 12px; cursor: pointer; }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pchip { font-size: 0.88rem; border-left: 3px solid var(--accent); padding: 4px 10px; border-radius: 0; }
+.more { border-top: 1px solid var(--rule); padding-block: 10px; }
+.more summary { cursor: pointer; font-weight: 600; }
+.bul { margin: 0; padding-left: 1.1em; max-width: 64ch; }
+.bul li { margin-bottom: 4px; }
+.src { font-size: 0.78rem; color: var(--muted); margin-top: 14px !important; line-height: 1.7; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.gintro { margin: 0 0 10px; font-size: 0.9rem; color: var(--muted); max-width: 64ch; }
+.gsteps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.gsteps li { border: 1px solid var(--rule); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.gsteps li.now { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.gsteps li.done { border-color: var(--ok); }
+.gsteps li > div:last-child { display: flex; flex-direction: column; gap: 2px; font-size: 0.84rem; }
+.gsteps li span { color: var(--muted); }
+.gf { background: #0b0f13; border-radius: 6px; padding: 4px; }
+.gfig { width: 100%; height: auto; display: block; }
+.gfig .gv, .mfig .gv { fill: #a8b3bb; stroke: #d7dee3; stroke-width: 0.8; }
+.gfig .gmid { fill: #d7dee3; stroke: var(--mark-2); stroke-width: 2; }
+.gfig .gtop, .mfig .gtop { fill: #d7dee3; stroke: var(--mark); stroke-width: 2.4; }
+.gfig .gbot { fill: #d7dee3; stroke: var(--mark-2); stroke-width: 2.4; }
+.gfig .gpath { fill: none; stroke: var(--mark-2); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.gfig .gl, .mfig .gl { stroke-width: 2; stroke-dasharray: 5 3; }
+.gl-top { stroke: var(--mark); } .gl-bot { stroke: var(--mark-2); } .gl-dim { stroke: #66737c; } .gl-bad { stroke: #ec7d74; }
+.gd { stroke: #050709; stroke-width: 1; }
+.gd-top { fill: var(--mark); } .gd-bot { fill: var(--mark-2); } .gd-bad { fill: #ec7d74; }
+.gn { font: 700 11px var(--f-mono); fill: #050709; }
+.gt { font: 700 18px var(--f-mono); fill: #c9d2d8; }
+.gt.gok { fill: var(--mark); }
+.grib { fill: none; stroke: #66737c; stroke-width: 5; stroke-linecap: round; }
+.gh { font-family: var(--f-display); font-weight: 600; font-size: 0.98rem; margin: 16px 0 8px; }
+.gmist { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.gmist figure { margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; }
+.gmist figure > div { background: #0b0f13; border-radius: 6px; padding: 4px; }
+.gmist figcaption { color: var(--muted); }
+.gmist figcaption b { color: var(--ink); display: block; }
+.mfig { width: 100%; height: auto; display: block; }
+.gtip { font-size: 0.86rem; margin: 12px 0 0; max-width: 64ch; }
+@media (max-width: 400px) { .gmist { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tapnext { display: flex; align-items: center; gap: 10px; background: #121a20; border: 1px solid #2a343c; border-radius: 6px; padding: 8px 10px; font-size: 0.86rem; color: #d7dee3; min-height: 46px; }
+.tapnext b { color: #fff; }
+.tapnext .tn-step { margin-right: 4px; }
+.cicon { width: 52px; height: 34px; flex: none; }
+.cicon .iv { fill: #a8b3bb; stroke: #d7dee3; stroke-width: 0.8; }
+.cicon .ic { fill: none; stroke: #8b98a2; stroke-width: 1; }
+.tn-done { width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center; background: #2f7d4f; color: #fff; font-weight: 700; }
+.modes { margin-bottom: 12px; }
+.shapes { margin: 4px 0 10px; }
+.chip.shape { display: inline-flex; align-items: center; gap: 6px; }
+.shape-ic { width: 18px; height: 20px; }
+.shape-ic path { fill: none; stroke: currentColor; stroke-width: 4; stroke-linecap: round; }
+.mcurve { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; margin: 0 0 10px; display: flex; flex-direction: column; gap: 10px; }
+.mcurve legend { padding: 0 4px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.mrow { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 8px; align-items: center; }
+.mrow label, .mlab { font-size: 0.86rem; color: var(--muted); }
+.mangle { display: inline-flex; align-items: center; gap: 4px; }
+.mangle input { width: 7em; font: 500 1rem var(--f-mono); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; }
+.mrow select { font: 0.88rem var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px; max-width: 100%; }
+@media (max-width: 400px) { .mrow { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
+.btn {
+  font: 500 0.9rem/1 var(--f-body); border-radius: 6px; padding: 10px 14px; cursor: pointer;
+  border: 1px solid transparent; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-ghost { background: transparent; color: #d7dee3; border-color: #34404a; }
+.btn:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--mark-2); outline-offset: 2px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+/* Sheet */
+.sheet { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; }
+.eyebrow { font-family: var(--f-mono); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 1.15rem; margin: 0 0 8px; text-wrap: balance; }
+
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; color: var(--muted); }
+.steps li .n { width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--rule); display: grid; place-items: center; font: 500 0.75rem var(--f-mono); }
+.steps li.now { color: var(--ink); }
+.steps li.now .n { border-color: var(--accent); color: var(--accent); }
+.steps li.done .n { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.key { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+
+.readout { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 18px; }
+.angle { font-family: var(--f-display); font-weight: 800; font-size: 3.6rem; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.angle small { font-size: 1.6rem; font-weight: 600; }
+.band-pill { font: 600 0.8rem/1 var(--f-body); padding: 6px 10px; border-radius: 999px; background: var(--band-0); color: var(--ink); margin-bottom: 8px; }
+.tilts { font-family: var(--f-mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 8px; }
+.empty { color: var(--muted); }
+
+.scale { margin-top: 16px; }
+.scale svg { width: 100%; height: auto; display: block; overflow: visible; }
+.scale text { font-family: var(--f-mono); font-size: 10px; fill: var(--muted); }
+.scale .lab { font-family: var(--f-body); font-size: 10.5px; fill: var(--ink); }
+
+.meaning p { margin: 0 0 8px; max-width: 62ch; }
+.meaning p:last-child { margin-bottom: 0; }
+
+details { border-top: 1px solid var(--rule); padding-block: 10px; }
+details:first-of-type { border-top: 0; padding-top: 0; }
+summary { cursor: pointer; font-weight: 600; }
+details p, details ul { margin: 8px 0 0; color: var(--ink); max-width: 64ch; }
+details ul { padding-left: 1.1em; }
+details li { margin-bottom: 4px; }
+.red { color: var(--crit); font-weight: 600; }
+a { color: var(--accent); }
+footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand">Spine<span>Angle</span></h1>
+    <p class="tag">Measure a Cobb angle on your own spinal X-ray. Your image stays on this device.</p>
+  </header>
+
+  <div class="notice" role="note">
+    <strong>Not a diagnosis.</strong>
+    <span>This is a student research prototype. Manual Cobb measurements vary by about 5° between experienced clinicians, so treat the number as a rough guide and confirm it with a doctor.</span>
+  </div>
+
+  <div class="grid">
+    <section class="viewer" aria-label="X-ray viewer">
+      <div class="viewer-bar">
+        <span class="chip-src" id="src">Example S-shaped spine · synthetic</span>
+        <div class="btn-row">
+          <label class="btn btn-primary" for="file">Upload X-ray</label>
+          <input id="file" type="file" accept="image/png,image/jpeg,image/webp">
+          <button class="btn btn-ghost" id="crop" type="button" hidden>Undo crop</button>
+          <button class="btn btn-ghost" id="undo" type="button">Undo point</button>
+          <button class="btn btn-ghost" id="reset" type="button">Clear</button>
+          <button class="btn btn-ghost" id="forget" type="button" hidden>Forget saved data</button>
+        </div>
+      </div>
+      <div class="curves" id="curves" aria-label="Curves"></div>
+      <div class="tapnext" id="tapnext" aria-live="polite"></div>
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="X-ray with measurement lines. Tap to place points, drag to adjust."></canvas>
+      </div>
+      <p class="saved" id="saved" aria-live="polite"></p>
+      <div class="tools">
+        <label for="bri">Brightness <input id="bri" type="range" min="50" max="180" value="100"></label>
+        <label for="con">Contrast <input id="con" type="range" min="50" max="220" value="110"></label>
+      </div>
+    </section>
+
+    <div class="sheet">
+      <section class="card">
+        <p class="eyebrow">How to measure</p>
+        <div class="modes chips" role="group" aria-label="How do you want to add your curve?">
+          <button type="button" class="chip on" data-mode="measure" aria-pressed="true">Measure on my X-ray</button>
+          <button type="button" class="chip" data-mode="manual" aria-pressed="false">I already know my angles</button>
+        </div>
+        <div id="guideMeasure">
+        <h2>Put the lines on the two most tilted vertebrae</h2>
+        <p class="gintro">Vertebrae are the stacked blocks down the middle of the X-ray. Each has a bright top edge and bottom edge. Raise the contrast if the edges are hard to see.</p>
+        <ol class="gsteps" id="steps">
+          <li><div class="gf" data-gfig="bend"></div><div><b>1. Find the bend</b><span>The flattest vertebrae sit in the middle of the curve.</span></div></li>
+          <li data-s="0"><div class="gf" data-gfig="top"></div><div><b>2. Find the most tilted one above it</b><span>Move up from the middle. Tilt gets bigger, then smaller again. Pick the one that tilts most.</span></div></li>
+          <li data-s="0"><div class="gf" data-gfig="tapTop"></div><div><b>3. Tap its top edge</b><span>Left corner first, then right corner.</span></div></li>
+          <li data-s="2"><div class="gf" data-gfig="tapBottom"></div><div><b>4. Do the same below</b><span>Find the vertebra tilted most the other way. Tap its <b>bottom</b> edge, left then right.</span></div></li>
+        </ol>
+        <h3 class="gh">Common mistakes</h3>
+        <div class="gmist">
+          <figure><div data-mfig="middle"></div><figcaption><b>Tapping the middle.</b> Tap the corners.</figcaption></figure>
+          <figure><div data-mfig="edge"></div><figcaption><b>Wrong edge.</b> Top vertebra: top edge. Bottom vertebra: bottom edge.</figcaption></figure>
+          <figure><div data-mfig="ribs"></div><figcaption><b>Tapping a rib.</b> Stay on the block in the middle.</figcaption></figure>
+        </div>
+        <p class="gtip"><b>Check:</b> drag a line to the vertebra above or below. If the angle gets bigger, keep it there. <b>S-shaped spine?</b> Tap <b>+ Add curve</b> and measure the next bend the same way.</p>
+        </div>
+        <div id="manualForm" hidden></div>
+      </section>
+
+      <section class="card" aria-live="polite">
+        <p class="eyebrow" id="alabel">Cobb angle</p>
+        <div class="readout">
+          <div class="angle" id="angle">–<small>°</small></div>
+          <span class="band-pill" id="pill" hidden></span>
+        </div>
+        <ul class="clist" id="clist"></ul>
+        <div class="tilts" id="tilts">Place 4 points to see the angle.</div>
+        <div class="scale" aria-hidden="true">
+          <svg viewBox="0 0 400 58" id="scale"></svg>
+        </div>
+      </section>
+
+      <section class="card meaning" id="meaning">
+        <p class="eyebrow">What this range usually means</p>
+        <p class="empty">The explanation for your range appears here once the angle is measured.</p>
+      </section>
+
+      <section class="card exercise" id="exercise" aria-live="polite">
+        <p class="eyebrow">Exercise and your curve pattern</p>
+        <p class="empty">Measure a curve to see what physiotherapy usually focuses on for its pattern.</p>
+      </section>
+
+      <section class="card">
+        <p class="eyebrow">Getting help in the UK</p>
+        <details open>
+          <summary>Free physiotherapy on the NHS</summary>
+          <p>NHS physiotherapy is free. Ask your GP for a referral, or check whether your local NHS musculoskeletal (MSK) physiotherapy service lets you self-refer; many areas do. International students who paid the Immigration Health Surcharge are covered. University students can also ask their student health centre.</p>
+        </details>
+        <details>
+          <summary>When to get help quickly</summary>
+          <ul>
+            <li class="red">New numbness, tingling or weakness in your legs</li>
+            <li class="red">Changes in bladder or bowel control</li>
+            <li class="red">Shortness of breath that's getting worse</li>
+          </ul>
+          <p>Call 111, or 999 in an emergency. See your GP soon if your back shape is visibly changing or pain is getting worse.</p>
+        </details>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    Built by Nicole Lee as an MSc AI project. The image is processed only in your browser and is never uploaded. Your X-ray and measurements are saved in this browser on this device so they're here next time; tap Forget saved X-ray to delete them. Angles under 90° are measured; very large curves above 90° are not supported. Severity ranges follow commonly used clinical thresholds and are for education only.
+  </footer>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const els = {
+    file: document.getElementById('file'), stage: document.getElementById('stage'),
+    undo: document.getElementById('undo'), reset: document.getElementById('reset'),
+    crop: document.getElementById('crop'),
+    bri: document.getElementById('bri'), con: document.getElementById('con'),
+    angle: document.getElementById('angle'), pill: document.getElementById('pill'),
+    tilts: document.getElementById('tilts'), meaning: document.getElementById('meaning'),
+    steps: document.getElementById('steps'), src: document.getElementById('src'),
+    scale: document.getElementById('scale'), curves: document.getElementById('curves'),
+    clist: document.getElementById('clist'), alabel: document.getElementById('alabel'),
+    exercise: document.getElementById('exercise'),
+    forget: document.getElementById('forget'), saved: document.getElementById('saved'),
+    tapnext: document.getElementById('tapnext'),
+    manualForm: document.getElementById('manualForm'), guideMeasure: document.getElementById('guideMeasure')
+  };
+
+  const BANDS = [
+    { max: 10, name: 'Below scoliosis range', color: 'var(--band-0)',
+      text: ['Curves under 10° are classed as spinal asymmetry rather than scoliosis.', 'If you have symptoms or a visible change in shape, it is still worth seeing a GP.'] },
+    { max: 25, name: 'Mild', color: 'var(--band-1)',
+      text: ['Mild curves are usually monitored with occasional X-rays, especially while someone is still growing.', 'Scoliosis-specific exercise taught by a physiotherapist is one option at this size.'] },
+    { max: 40, name: 'Moderate', color: 'var(--band-2)',
+      text: ['In people who are still growing, a brace is often considered to stop the curve getting bigger.', 'In adults, the usual approach is monitoring plus physiotherapy for strength, posture and pain.'] },
+    { max: 50, name: 'Severe', color: 'var(--band-3)',
+      text: ['A review by a spine specialist is usual at this size.', 'Surgery may be discussed, particularly for teenagers or if the curve is getting bigger. Physiotherapy can still help with pain and function.'] },
+    { max: 91, name: 'Severe', color: 'var(--band-4)',
+      text: ['Curves over 50° can keep progressing slowly in adulthood, often by around half a degree to one degree a year.', 'Regular review with an orthopaedic spine specialist is recommended. Ask your GP for a referral and for physiotherapy, both free on the NHS.'] }
+  ];
+  const bandFor = a => BANDS.find(b => Math.round(a * 10) / 10 < b.max); // band on the shown value
+
+  let source = null;        // image or canvas to draw
+  // Up to 3 curves (an S-shaped spine has two bends, some have three). Each has 4 points in canvas pixels:
+  // [top-left, top-right] of the upper end vertebra's top edge, [left, right] of the lower one's bottom edge.
+  const MAX_CURVES = 3;
+  const CURVE_COLORS = ['#f4b63f', '#5fd3e8', '#f39bc4'];
+  let curves = [{ pts: [], region: 'auto' }];
+  let active = 0;
+  let drag = null;          // { c, i }
+  let note = '';            // one-off hint shown under the readout
+  const cur = () => curves[active].pts;
+
+  // ---------- Geometry ----------
+  // Tilt of the line a->b in degrees, normalised to (-90, 90]
+  function tilt(a, b) {
+    let t = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    while (t > 90) t -= 180;
+    while (t <= -90) t += 180;
+    return t;
+  }
+  function cobb(p) {
+    const t1 = tilt(p[0], p[1]), t2 = tilt(p[2], p[3]);
+    let d = Math.abs(t1 - t2);
+    if (d > 90) d = 180 - d;
+    return { angle: d, t1, t2 };
+  }
+  window.SpineAngle = { tilt, cobb }; // exposed for tests
+
+  // ---------- Synthetic example: an S-shaped spine with two curves ----------
+  function makeExample() {
+    const W = 600, H = 1150, c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    const bg = g.createRadialGradient(W / 2, H * 0.45, 40, W / 2, H * 0.45, H * 0.7);
+    bg.addColorStop(0, '#2b3238'); bg.addColorStop(1, '#07090b');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+
+    // Upper (thoracic) curve between vertebrae 2 and 8, lower (lumbar) between 8 and 14.
+    // Endplate tilts: v2 -21 deg, v8 +21 deg, v14 -9 deg  ->  curves of 42 deg and 30 deg.
+    const cx = 300, gap = 57, y0 = 80 + 2 * gap, L = 6 * gap, ymid = y0 + L;
+    const A1 = Math.tan(21 * Math.PI / 180) * L / Math.PI;
+    const A2 = Math.tan(9 * Math.PI / 180) * L / Math.PI;
+    const A = y => (y <= ymid ? A1 : A2);
+    const xAt = y => cx + A(y) * Math.sin(Math.PI * (y - y0) / L);
+    const slopeAt = y => A(y) * Math.PI / L * Math.cos(Math.PI * (y - y0) / L);
+    const verts = [];
+    for (let k = 0; k < 17; k++) {
+      const yc = 80 + k * gap, xc = xAt(yc), m = slopeAt(yc);
+      const n = Math.hypot(m, 1), spine = { x: m / n, y: 1 / n }, plate = { x: 1 / n, y: -m / n };
+      verts.push({ xc, yc, spine, plate, w: 58 + k * 1.8, h: 42 });
+    }
+    // ribs for the 12 thoracic levels
+    g.strokeStyle = 'rgba(190,200,206,0.16)'; g.lineWidth = 7; g.lineCap = 'round';
+    verts.slice(0, 12).forEach((v, i) => {
+      [-1, 1].forEach(side => {
+        g.beginPath();
+        g.moveTo(v.xc + side * v.w * 0.55, v.yc);
+        g.quadraticCurveTo(v.xc + side * (150 + i * 4), v.yc - 10, v.xc + side * (200 + i * 3), v.yc + 70 + i * 4);
+        g.stroke();
+      });
+    });
+    // pelvis hint
+    g.fillStyle = 'rgba(190,200,206,0.12)';
+    g.beginPath(); g.ellipse(cx, 1110, 230, 70, 0, Math.PI, 0); g.fill();
+    // vertebral bodies
+    verts.forEach(v => {
+      g.save(); g.translate(v.xc, v.yc); g.rotate(Math.atan2(v.plate.y, v.plate.x));
+      const grd = g.createLinearGradient(0, -v.h / 2, 0, v.h / 2);
+      grd.addColorStop(0, '#d9dfe3'); grd.addColorStop(0.5, '#aab4bb'); grd.addColorStop(1, '#d3d9dd');
+      g.fillStyle = grd; g.shadowColor = 'rgba(220,230,235,0.25)'; g.shadowBlur = 10;
+      g.beginPath(); g.roundRect(-v.w / 2, -v.h / 2, v.w, v.h, 6); g.fill();
+      g.restore();
+    });
+    const corner = (v, sx, sy) => ({ x: v.xc + sx * v.w / 2 * v.plate.x + sy * v.h / 2 * v.spine.x,
+                                    y: v.yc + sx * v.w / 2 * v.plate.y + sy * v.h / 2 * v.spine.y });
+    const [a, b, z] = [verts[2], verts[8], verts[14]];
+    return {
+      canvas: c,
+      curves: [
+        [corner(a, -1, -1), corner(a, 1, -1), corner(b, -1, 1), corner(b, 1, 1)],
+        [corner(b, -1, -1), corner(b, 1, -1), corner(z, -1, 1), corner(z, 1, 1)]
+      ]
+    };
+  }
+
+  // ---------- Drawing ----------
+  function sizeTo(w, h) {
+    const s = Math.min(1, 1600 / Math.max(w, h));
+    cv.width = Math.round(w * s); cv.height = Math.round(h * s);
+  }
+  function lineAcross(a, b, color, lw) {
+    const dx = b.x - a.x, dy = b.y - a.y, n = Math.hypot(dx, dy) || 1, R = cv.width * 1.5;
+    const ux = dx / n, uy = dy / n;
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.setLineDash([lw * 4, lw * 2.5]);
+    ctx.beginPath(); ctx.moveTo(a.x - ux * R, a.y - uy * R); ctx.lineTo(b.x + ux * R, b.y + uy * R); ctx.stroke();
+    ctx.setLineDash([]); ctx.lineWidth = lw * 1.6;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    ctx.restore();
+  }
+  function draw() {
+    ctx.save();
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.filter = `brightness(${els.bri.value}%) contrast(${els.con.value}%)`;
+    if (source) ctx.drawImage(source, 0, 0, cv.width, cv.height);
+    ctx.restore();
+
+    const lw = Math.max(1.5, cv.width / 320), r = lw * 3.2, fs = Math.max(12, cv.width / 26);
+    curves.forEach((c, ci) => {
+      const p = c.pts, col = CURVE_COLORS[ci];
+      ctx.save();
+      ctx.globalAlpha = ci === active ? 1 : 0.55;
+      if (p.length >= 2) lineAcross(p[0], p[1], col, lw);
+      if (p.length >= 4) lineAcross(p[2], p[3], col, lw);
+      p.forEach(q => {
+        ctx.beginPath(); ctx.arc(q.x, q.y, ci === active ? r : r * 0.8, 0, Math.PI * 2);
+        ctx.fillStyle = col; ctx.fill();
+        ctx.lineWidth = lw * 0.8; ctx.strokeStyle = '#050709'; ctx.stroke();
+      });
+      // curve label beside its points
+      if (p.length) {
+        const xs = p.map(q => q.x), ys = p.map(q => q.y);
+        const lx = Math.min(cv.width - fs * 4.2, Math.max(...xs) + fs * 0.8);
+        const ly = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const label = p.length === 4 ? `${ci + 1}: ${cobb(p).angle.toFixed(1)}°` : `${ci + 1}`;
+        ctx.font = `600 ${fs}px "IBM Plex Mono", ui-monospace, monospace`;
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(5,7,9,0.75)';
+        ctx.fillRect(lx - fs * 0.3, ly - fs * 0.7, tw + fs * 0.6, fs * 1.4);
+        ctx.fillStyle = col; ctx.fillText(label, lx, ly);
+      }
+      ctx.restore();
+    });
+    drawLoupe();
+    update();
+    scheduleSave();
+  }
+
+  // ---------- Readout ----------
+  function scaleSvg(markers) {
+    const x = v => 10 + v / 90 * 380, edges = [0, 10, 25, 40, 50, 90];
+    let s = '';
+    for (let i = 0; i < 5; i++) {
+      s += `<rect x="${x(edges[i])}" y="14" width="${x(edges[i + 1]) - x(edges[i]) - 1.5}" height="12" rx="2" fill="${BANDS[i].color}"/>`;
+    }
+    edges.forEach(e => { s += `<text x="${x(e)}" y="40" text-anchor="middle">${e}°</text>`; });
+    s += `<text class="lab" x="${x(17.5)}" y="54" text-anchor="middle">mild</text>`;
+    s += `<text class="lab" x="${x(32.5)}" y="54" text-anchor="middle">moderate</text>`;
+    s += `<text class="lab" x="${x(70)}" y="54" text-anchor="middle">severe</text>`;
+    markers.forEach(m => {
+      const ax = x(Math.min(m.a, 90));
+      s += `<path d="M${ax - 6} 2 L${ax + 6} 2 L${ax} 12 Z" fill="${m.color}" stroke="var(--ink)" stroke-width="1"/>` +
+           `<line x1="${ax}" y1="12" x2="${ax}" y2="28" stroke="var(--ink)" stroke-width="2"/>`;
+    });
+    els.scale.innerHTML = s;
+  }
+  function renderTabs() {
+    let h = '';
+    curves.forEach((c, i) => {
+      const val = c.pts.length === 4 ? `${cobb(c.pts).angle.toFixed(1)}°` : `${c.pts.length}/4`;
+      h += `<button type="button" class="ctab${i === active ? ' on' : ''}" data-i="${i}" aria-pressed="${i === active}">` +
+           `<span class="dot" style="background:${CURVE_COLORS[i]}"></span>Curve ${i + 1} <span class="cv">${val}</span></button>`;
+    });
+    if (curves.length < MAX_CURVES) h += `<button type="button" class="ctab add" id="addCurve">+ Add curve</button>`;
+    if (curves.length > 1) h += `<button type="button" class="ctab rm" id="rmCurve">Remove curve ${active + 1}</button>`;
+    els.curves.innerHTML = h;
+  }
+  function update() {
+    renderTabs();
+    renderTapNext();
+    const n = cur().length;
+    els.steps.querySelectorAll('li[data-s]').forEach(li => {
+      const s = +li.dataset.s;
+      if (s === 4) li.className = n === 4 ? 'now' : '';
+      else if (s === 6) li.className = '';
+      else li.className = n >= s + 2 ? 'done' : n >= s ? 'now' : '';
+    });
+    els.undo.disabled = n === 0;
+
+    const done = mode === 'manual' ? manualDone() : curves.map((c, i) => ({ i, c })).filter(o => o.c.pts.length === 4)
+      .map(o => ({ i: o.i, ...cobb(o.c.pts) }));
+    // per-curve list
+    els.clist.innerHTML = done.length > 1 ? done.map(d =>
+      `<li><span class="dot" style="background:${CURVE_COLORS[d.i]}"></span>Curve ${d.i + 1}` +
+      `<span class="cl-v">${d.angle.toFixed(1)}°</span><span class="cl-b">${bandFor(d.angle).name.toLowerCase()}</span></li>`).join('') : '';
+
+    // hint for the active curve
+    let hint;
+    if (n < 2) hint = `Curve ${active + 1}: tap ${2 - n} point${2 - n === 1 ? '' : 's'} on the top edge of the upper vertebra.`;
+    else if (n < 4) hint = `Curve ${active + 1}: tap ${4 - n} point${4 - n === 1 ? '' : 's'} on the bottom edge of the lower vertebra.`;
+    else {
+      const r = cobb(cur());
+      hint = `Curve ${active + 1}: upper endplate ${r.t1 >= 0 ? '+' : ''}${r.t1.toFixed(1)}°  ·  lower endplate ${r.t2 >= 0 ? '+' : ''}${r.t2.toFixed(1)}°`;
+    }
+    if (mode === 'manual') hint = done.length ? 'Using the angles you typed in.' : 'Type your Cobb angle in the form above.';
+    els.tilts.textContent = note && mode !== 'manual' ? `${note} ${hint}` : hint;
+
+    if (!done.length) {
+      els.angle.innerHTML = '–<small>°</small>';
+      els.alabel.textContent = 'Cobb angle';
+      els.pill.hidden = true;
+      els.meaning.innerHTML = '<p class="eyebrow">What this range usually means</p><p class="empty">The explanation for your range appears here once the angle is measured.</p>';
+      scaleSvg([]);
+      renderExercise([]);
+      return;
+    }
+    const main = done.reduce((a, b) => (b.angle > a.angle ? b : a));
+    const b = bandFor(main.angle);
+    els.alabel.textContent = done.length > 1 ? `Largest curve · curve ${main.i + 1}` : 'Cobb angle';
+    els.angle.innerHTML = `${main.angle.toFixed(1)}<small>°</small>`;
+    els.pill.hidden = false; els.pill.textContent = b.name; els.pill.style.background = b.color;
+    const range = b.max === 10 ? 'under 10°' : b.max === 91 ? '50° and over' : `${BANDS[BANDS.indexOf(b) - 1].max}–${b.max - 1}°`;
+    const multi = done.length > 1
+      ? '<p>With more than one curve, the largest one usually guides treatment decisions. A specialist will also look at whether the curves balance each other and which one is the main (structural) curve.</p>' : '';
+    els.meaning.innerHTML = `<p class="eyebrow">What ${range} usually means</p><h2>${b.name}${b.max === 91 ? ' (over 50°)' : ''}</h2>` +
+      b.text.map(t => `<p>${t}</p>`).join('') + multi;
+    scaleSvg(done.map(d => ({ a: d.angle, color: CURVE_COLORS[d.i] })));
+    renderExercise(done);
+  }
+
+  // ---------- Curve pattern (see ml/pattern.py and docs/EXERCISE_EVIDENCE.md) ----------
+  // Softmax regression trained by ml/pattern.py. Source "synthetic" until retrained on AASCE.
+  const PATTERN_MODEL = {"classes": ["thoracic", "thoracolumbar", "lumbar"], "mu": [0.49279, 0.35377, 0.63181, 0.27804, 0.26513, 0.45665, 0.50697], "sd": [0.1493, 0.15375, 0.15081, 0.06003, 0.14877, 0.17519, 0.06136], "W": [[-1.29821, 0.29189, 1.00632], [-1.2736, 0.24198, 1.03162], [-1.27198, 0.33123, 0.94076], [0.06648, 0.21234, -0.27882], [-1.86382, -0.23397, 2.09779], [0.05501, -0.09956, 0.04455], [-0.05925, -0.03877, 0.09803]], "b": [4.93722, 0.50286, -5.44008], "source": "synthetic"};
+  const REGION_LABEL = { thoracic: 'Thoracic (mid-back)', thoracolumbar: 'Thoracolumbar (where the ribs end)', lumbar: 'Lumbar (lower back)' };
+  const MAJOR_FRACTION = 0.6;
+
+  // Keep in sync with features() in ml/pattern.py
+  function patternFeatures(p, H, W) {
+    const y = p.map(q => q.y / H), r = cobb(p);
+    const top = (y[0] + y[1]) / 2, bot = (y[2] + y[3]) / 2, mid = (y[0] + y[1] + y[2] + y[3]) / 4;
+    const xmid = p.reduce((s, q) => s + q.x, 0) / 4 / W;
+    return [mid, top, bot, bot - top, mid * mid, r.angle / 90, xmid];
+  }
+  function predictRegion(p) {
+    const f = patternFeatures(p, cv.height, cv.width), m = PATTERN_MODEL;
+    const z = m.classes.map((_, k) => m.b[k] + f.reduce((s, v, j) => s + ((v - m.mu[j]) / m.sd[j]) * m.W[j][k], 0));
+    const mx = Math.max(...z), e = z.map(v => Math.exp(v - mx)), sum = e.reduce((a, b) => a + b, 0);
+    const probs = e.map(v => v / sum), k = probs.indexOf(Math.max(...probs));
+    return { region: m.classes[k], p: probs[k] };
+  }
+  // Upper endplate tilted less than the lower one means the curve bulges toward the image's right
+  const sideOf = p => { const r = cobb(p); return r.t1 < r.t2 ? 'right' : 'left'; };
+  window.SpineAngle.patternFeatures = patternFeatures;
+  window.SpineAngle.predictRegion = predictRegion;
+
+  function patternOf(done) {
+    const largest = Math.max(...done.map(d => d.angle));
+    const list = done.map(d => {
+      if (d.manual) {
+        const def = d.i === 0 ? 'right' : 'left';
+        return { ...d, pred: { region: d.manual.region, p: 1 }, region: d.manual.region,
+                 side: d.manual.side === 'unsure' ? def : d.manual.side, sideKnown: d.manual.side !== 'unsure',
+                 major: d.angle >= 10 && d.angle >= MAJOR_FRACTION * largest };
+      }
+      const c = curves[d.i], pred = predictRegion(c.pts);
+      return { ...d, pred, region: c.region && c.region !== 'auto' ? c.region : pred.region,
+               side: sideOf(c.pts), major: d.angle >= 10 && d.angle >= MAJOR_FRACTION * largest };
+    });
+    const majors = list.filter(c => c.major), regions = majors.map(c => c.region);
+    let key = 'none';
+    if (majors.length === 1) key = regions[0] === 'thoracic' ? 'thoracic' : 'lumbar';
+    else if (majors.length > 1) key = regions.includes('thoracic') && regions.some(r => r !== 'thoracic') ? 'double' : (regions[0] === 'thoracic' ? 'thoracic' : 'lumbar');
+    return { list, key, largest };
+  }
+
+  const PATTERN_TEXT = {
+    thoracic: {
+      title: 'Thoracic curve pattern',
+      focus: ['Thoracic curves change the shape of the rib cage. One side of the back and ribs usually sticks out (a rib hump), and the shoulders and shoulder blades can sit unevenly.',
+              'A physio will usually work on correcting the thoracic curve in all three dimensions and holding that correction. Methods such as Schroth also use breathing exercises as part of the correction, and in severe thoracic curves exercise has been reported to help breathing.']
+    },
+    lumbar: {
+      title: 'Thoracolumbar or lumbar curve pattern',
+      focus: ['These curves show mostly at the waist and hips. One side of the waist creases more, and the pelvis can shift sideways.',
+              'The physio will check your pelvis position, because in the Schroth method it decides which exercise type you get (4c or 4cp). In one trial, supervised Schroth exercise improved waist asymmetry.']
+    },
+    double: {
+      title: 'Double (S-shaped) curve pattern',
+      focus: ['With two curves, correcting one bend can push the other further, so a physio works on both together.',
+              'They decide which curve is the main one from your body shape and pelvis position (in Schroth, types 3c or 4c). That needs a clinical examination, because an X-ray alone can\'t show it.']
+    }
+  };
+  const SRC = [
+    ['Seven PSSE schools review (2016)', 'https://pubmed.ncbi.nlm.nih.gov/27525315/'],
+    ['SOSORT guidelines (2016)', 'https://link.springer.com/10.1186/s13013-017-0145-8'],
+    ['Schroth supervised vs home trial (Kuru 2016)', 'https://journals.sagepub.com/doi/10.1177/0269215515575745'],
+    ['Self-correction trial in teenagers (Monticone 2014)', 'https://re.public.polimi.it/bitstream/11311/865753/4/Active%20self-correction%20and%20task-oriented%20exercises%20reduce%20spinal%20deformity_11311-865753_Ambrosini.pdf'],
+    ['Adult rehabilitation trial (Monticone 2016)', 'https://search.pedro.org.au/search-results/record-detail/45636'],
+    ['Schroth curve types (2023)', 'https://pmc.ncbi.nlm.nih.gov/articles/PMC10047876'],
+    ['Side plank case series (Fishman 2014)', 'https://pmc.ncbi.nlm.nih.gov/articles/PMC4268609/'],
+    ['Side plank randomised trial (2019)', 'https://pubmed.ncbi.nlm.nih.gov/31723480/'],
+    ['Concerns about the side plank trial (2021)', 'https://journals.sagepub.com/doi/reader/10.1177/21649561211019372'],
+    ['Schroth vs core stabilisation trial (2021)', 'https://doaj.org/article/9b92f055635f4d6bb59f7c277bb52704']
+  ];
+
+
+  // Videos open on YouTube: the viewer can't embed other sites.
+  const VIDEOS = {
+    overview: { t: 'How Schroth therapy for scoliosis works', by: 'Scottish Rite for Children (children\'s orthopaedic hospital)', u: 'https://www.youtube.com/watch?v=F4iMOs9jZy4' },
+    positions: { t: '5 essential Schroth exercise positions and what they do', by: 'Physio Andrea, The ScoliClinic · 13 min', u: 'https://www.youtube.com/watch?v=TU7AvrBekGY' },
+    sidelying: { t: 'Side-lying Schroth exercise: breathing and correction demo', by: 'The ScoliClinic · 5 min', u: 'https://www.youtube.com/watch?v=leWNzAtF560' },
+    scurve: { t: 'Schroth exercises at home for a thoracic-right, lumbar-left curve', by: 'Dr Katie Blanchard, Schroth Boss', u: 'https://www.youtube.com/watch?v=19QJnG4ps48' },
+    fishman: { t: 'Dr Loren Fishman on reducing scoliosis curves with yoga poses', by: 'Move With Scoliosis (yoga and Pilates teacher) with Dr Fishman', u: 'https://www.youtube.com/watch?v=W5_FIyWRl38' },
+    plankside: { t: 'Side plank for scoliosis: which side to do?', by: 'Move With Scoliosis', u: 'https://www.youtube.com/watch?v=tyHbm5ZEJk4' }
+  };
+  const videoCard = v => `<a class="vid" href="${v.u}" target="_blank" rel="noopener"><span class="play" aria-hidden="true"></span>` +
+    `<span class="vt"><b>${v.t}</b><span>${v.by}</span></span></a>`;
+
+  // ---------- Personal plan: mirror check, Schroth type estimate, exercises with drawings ----------
+  // See docs/EXERCISE_EVIDENCE.md for the evidence behind every rule here.
+  let mirror = { hump: 'unsure', crease: 'unsure', pelvis: 'unsure', growing: 'no', pain: 'sometimes', plank: 'unsure' };
+  const opp = s => (s === 'left' ? 'right' : 'left');
+
+  // Map the image's sides to the body's, using the rib hump (thoracic bulge side) or the
+  // deeper waist crease (the lumbar hollow side). Returns true/false, or null if unknown.
+  function imageMatchesBody(pat) {
+    if (mode === 'manual' && pat.list.some(c => c.sideKnown)) return true;
+    const t = pat.list.find(c => c.major && c.region === 'thoracic');
+    if (t && (mirror.hump === 'left' || mirror.hump === 'right')) return t.side === mirror.hump;
+    const l = pat.list.find(c => c.major && c.region !== 'thoracic');
+    if (l && (mirror.crease === 'left' || mirror.crease === 'right')) return l.side === opp(mirror.crease);
+    return null;
+  }
+  const bodySide = (imgSide, same) => (same === null ? null : same ? imgSide : opp(imgSide));
+  const sideWords = (imgSide, same) => {
+    const b = bodySide(imgSide, same);
+    return b ? `your ${b}` : (mode === 'manual' ? 'the bulge side' : `the image's ${imgSide}`);
+  };
+
+  function schrothEstimate(pat, same) {
+    const majors = pat.list.filter(c => c.major).sort((a, b) => b.angle - a.angle);
+    if (!majors.length || mirror.pelvis === 'unsure' || same === null) return null;
+    const main = majors[0], lumbarMain = main.region !== 'thoracic';
+    const convex = bodySide(main.side, same);
+    if (mirror.pelvis === 'level') return { type: lumbarMain ? '4c' : '3c', p: false };
+    if (mirror.pelvis === opp(convex)) return { type: lumbarMain ? '4cp' : '3cp', p: true };
+    return { type: null, p: false };
+  }
+  window.SpineAngle.schrothEstimate = (pat, same, m) => { const keep = mirror; mirror = { ...mirror, ...m }; const r = schrothEstimate(pat, same); mirror = keep; return r; };
+  const TYPE_TEXT = {
+    '3c': 'Main curve in the mid-back, pelvis roughly level.',
+    '3cp': 'Main curve in the mid-back, with the pelvis shifted to the other side.',
+    '4c': 'Main curve in the lower back with a curve above it, pelvis roughly level.',
+    '4cp': 'Main curve in the lower back, with the pelvis shifted to the other side.'
+  };
+
+  // ---- drawings (all colours from theme tokens) ----
+  function arrow(x1, y1, x2, y2, cls = 'fa') {
+    const a = Math.atan2(y2 - y1, x2 - x1), h = 6;
+    const p1 = [x2 - h * Math.cos(a - 0.5), y2 - h * Math.sin(a - 0.5)], p2 = [x2 - h * Math.cos(a + 0.5), y2 - h * Math.sin(a + 0.5)];
+    return `<line class="${cls}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/><polygon class="${cls}h" points="${x2},${y2} ${p1[0].toFixed(1)},${p1[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}"/>`;
+  }
+  // Back view (as someone standing behind you sees you). +1 bulges to the right of the drawing.
+  function backFig(o) {
+    const segs = [];
+    if (o.key === 'thoracic') segs.push([36, 104, o.t]);
+    if (o.key === 'lumbar') segs.push([66, 126, o.l]);
+    if (o.key === 'double') { segs.push([36, 92, o.t]); segs.push([92, 126, o.l]); }
+    const xAt = y => { for (const [a, b, s] of segs) if (y >= a && y <= b) return 60 + 13 * s * Math.sin(Math.PI * (y - a) / (b - a)); return 60; };
+    let spine = '', dots = '';
+    for (let y = 30; y <= 128; y += 3) spine += `${y === 30 ? 'M' : 'L'}${xAt(y).toFixed(1)} ${y} `;
+    for (let y = 34; y <= 126; y += 7) dots += `<rect class="fv" x="${(xAt(y) - 3).toFixed(1)}" y="${y - 2}" width="6" height="4" rx="1"/>`;
+    const tS = o.t || o.l, ty = o.key === 'lumbar' ? 0 : -3 * tS;     // convex-side shoulder a bit higher
+    let g = `<path class="fb" d="M36 ${38 + ty} Q60 30 84 ${38 - ty} L88 64 Q81 98 83 116 L81 132 L39 132 L37 116 Q39 98 32 64 Z"/>` +
+      `<circle class="fb" cx="60" cy="16" r="10"/><path class="fl" d="M36 ${38 + ty} L27 92 M84 ${38 - ty} L93 92"/>` +
+      `<path class="fs" d="${spine}"/>${dots}<line class="fl" x1="40" y1="132" x2="80" y2="132"/>`;
+    const st = o.step, tx = o.key === 'lumbar' ? 0 : o.t, apexY = o.key === 'lumbar' ? 96 : 66;
+    const hump = tx || o.l, humpX = 60 + 24 * hump, hollowX = 60 - 24 * hump;
+    if (st === 'tall') g += arrow(60, 4, 60, -14) + arrow(60, 140, 60, 152);
+    if (st === 'shift') {
+      if (o.key === 'lumbar') g += arrow(60 + 34 * o.l, 100, 60 + 22 * o.l, 100);
+      else g += arrow(60 + 10 * tx, apexY, 60 - 14 * tx, apexY);
+      if (o.key === 'double') g += arrow(60 + 34 * o.l, 112, 60 + 22 * o.l, 112);
+    }
+    if (st === 'turn') {
+      const x0 = humpX - 10 * hump, y0 = apexY - 10;
+      g += `<path class="fa" d="M${x0} ${y0} q${14 * hump} 6 ${4 * hump} 22"/>` + arrow(x0 + 6 * hump, y0 + 18, x0 + 4 * hump, y0 + 22);
+    }
+    if (st === 'breathe' || o.bag) {
+      for (let i = 0; i < 3; i++) g += `<path class="fa" d="M${hollowX - 6 * hump * i} ${apexY - 10 - i * 3} q${-8 * hump} ${10 + i * 3} 0 ${20 + i * 6}"/>`;
+    }
+    if (o.bag) g += `<rect class="fbag" x="${humpX - 9}" y="${apexY - 7}" width="18" height="14" rx="4"/>`;
+    if (st === 'pelvis') g += arrow(60 + 30 * o.pelvisShift, 140, 60 + 8 * o.pelvisShift, 140);
+    if (st === 'hold') g += `<circle class="fa" cx="104" cy="16" r="9"/><line class="fa" x1="104" y1="16" x2="104" y2="10"/><line class="fa" x1="104" y1="16" x2="109" y2="16"/>`;
+    // side labels sit outside the body outline (x 27-93), above the arrows' level
+    const lab = (txt, s) => `<text class="ft" x="${s > 0 ? 126 : -6}" y="${apexY - 24}" text-anchor="${s > 0 ? 'end' : 'start'}">${txt}</text>`;
+    g += lab('bulge', hump) + lab('hollow', -hump);
+    if (o.lr) g += `<text class="ft" x="-4" y="164">${o.lr[0]}</text><text class="ft" x="124" y="164" text-anchor="end">${o.lr[1]}</text>`;
+    return `<svg class="fig" viewBox="-8 -20 136 190" role="img" aria-label="${o.alt}">${g}</svg>`;
+  }
+  // Side views of strength exercises
+  function sideFig(kind, alt, opts = {}) {
+    const fl = '<line class="ff" x1="4" y1="76" x2="156" y2="76"/>';
+    let g = '';
+    if (kind === 'plank') {
+      g = opts.knees
+        ? `<circle class="fb" cx="22" cy="44" r="8"/><path class="fw" d="M32 48 L100 62 L106 74 M32 48 L32 74 L54 74 M106 74 L130 74"/>`
+        : `<circle class="fb" cx="22" cy="44" r="8"/><path class="fw" d="M32 48 L144 70 M32 48 L32 74 L54 74"/>`;
+    }
+    if (kind === 'sideplank') {
+      g = opts.knees
+        ? `<circle class="fb" cx="30" cy="28" r="8"/><path class="fw" d="M38 36 L98 58 L120 74 L140 74 M38 36 L38 74 L60 74 M66 46 L78 22"/>`
+        : `<circle class="fb" cx="30" cy="28" r="8"/><path class="fw" d="M38 36 L146 72 M38 36 L38 74 L60 74 M76 49 L84 22"/>`;
+      g += `<text class="ft" x="100" y="94" text-anchor="middle">${opts.label || 'bulge side down'}</text>` + arrow(100, 85, 94, 70);
+    }
+    if (kind === 'birddog') {
+      g = `<circle class="fb" cx="34" cy="30" r="8"/><path class="fw" d="M44 38 L110 40 M44 38 L44 74 M44 38 L10 30 M110 40 L110 74 L136 74 M110 40 L152 34"/>`;
+    }
+    if (kind === 'bridge') {
+      g = `<circle class="fb" cx="14" cy="66" r="8"/><path class="fw" d="M24 70 L88 46 L116 40 L128 74 M24 70 L60 74"/>` + arrow(88, 30, 88, 14);
+    }
+    return `<svg class="fig side" viewBox="0 0 160 100" role="img" aria-label="${alt}">${fl}${g}</svg>`;
+  }
+
+  function exerciseCard(c) {
+    return `<article class="ex"><div class="ex-fig">${c.fig}</div><div class="ex-body">` +
+      `<h4>${c.name}</h4><p class="why">${c.why}</p>` +
+      `<p class="dose"><span>${c.dose}</span></p>` +
+      (c.how ? `<ul class="how">${c.how.map(h => `<li>${h}</li>`).join('')}</ul>` : '') +
+      (c.easier ? `<p class="easier"><b>Easier:</b> ${c.easier}</p>` : '') +
+      (c.note ? `<p class="exnote">${c.note}</p>` : '') +
+      (c.video ? videoCard(c.video) : '') + '</div></article>';
+  }
+
+  function planHtml(pat) {
+    const same = imageMatchesBody(pat);
+    const majors = pat.list.filter(c => c.major);
+    const t = majors.find(c => c.region === 'thoracic');
+    const l = majors.filter(c => c.region !== 'thoracic').sort((a, b) => b.angle - a.angle)[0];
+    // drawing direction: back view, the person's right on the right of the drawing when sides are known
+    const dir = imgSide => ((bodySide(imgSide, same) || imgSide) === 'right' ? 1 : -1);
+    const fo = { key: pat.key, t: t ? dir(t.side) : 0, l: l ? dir(l.side) : 0, lr: same === null ? null : ['your left', 'your right'] };
+    const est = schrothEstimate(pat, same);
+    const easy = mirror.pain === 'often' || mirror.plank === 'no';
+    const hump = t ? sideWords(t.side, same) : null, lowBulge = l ? sideWords(l.side, same) : null;
+
+    // self-correction steps
+    const steps = [];
+    if (est && est.p) steps.push(['pelvis', 'Pelvis', 'Shift your hips back over your feet, toward the middle.']);
+    steps.push(['tall', 'Grow tall', 'Reach the top of your head up. Keep breathing.']);
+    if (pat.key === 'lumbar') steps.push(['shift', 'Even the waist', `Draw the waist on ${lowBulge} gently in.`]);
+    else steps.push(['shift', 'Shift', `Move your ribs toward the hollow side, away from ${hump}.${pat.key === 'double' ? ` Draw the waist on ${lowBulge} in.` : ''}`]);
+    steps.push(['turn', 'Turn back', 'Turn the bulging side of your back slightly forward.']);
+    steps.push(['breathe', 'Breathe into the hollow', 'Let the flat side of your ribs expand.']);
+    steps.push(['hold', 'Hold', 'Hold for 3 to 5 calm breaths, then relax.']);
+    const pelvisShift = mirror.pelvis === 'left' ? -1 : 1;   // back view: person's right drawn on the right
+    const stepGrid = '<div class="steps-grid">' + steps.map(([k, h, d], i) =>
+      `<figure class="stp">${backFig({ ...fo, step: k, pelvisShift, alt: `${h}: ${d}` })}<figcaption><b>${i + 1}. ${h}</b><span>${d}</span></figcaption></figure>`).join('') + '</div>';
+
+    // exercise list
+    const cards = [];
+    cards.push({
+      name: 'Self-correction in standing', fig: backFig({ ...fo, step: 'shift', alt: 'Standing self-correction' }),
+      why: 'The core of every scoliosis-specific method.', dose: 'A few times a day · 5 holds of 3 to 5 breaths',
+      how: ['Follow the steps below', 'Check in a mirror: shoulders more level, waist creases more even'], video: VIDEOS.positions
+    });
+    if (pat.key !== 'lumbar') cards.push({
+      name: 'Breathing into the hollow, lying down', fig: backFig({ ...fo, step: 'breathe', bag: true, alt: 'Breathing with a towel under the bulge' }),
+      why: 'Schroth-style breathing to open the flattened side of the ribs.', dose: 'Once or twice a day · 5 to 10 slow breaths',
+      how: ['Lie on your back, knees bent', `Put a small rolled towel under the ribs on the bulge side (${hump})`, 'Breathe in toward the hollow side; firm your tummy as you breathe out'],
+      video: VIDEOS.sidelying
+    });
+    if (l) cards.push({
+      name: 'Side plank', fig: sideFig('sideplank', 'Side plank, bulge side down', { knees: easy, label: `lie on ${lowBulge}` }),
+      why: `For your lower curve: the side where your lower back bulges (${lowBulge}) faces down.`,
+      dose: easy ? 'Once a day · 10 to 20 s, knees bent' : 'Once a day · build from 10 to 20 s toward as long as comfortable',
+      how: ['Elbow under shoulder', 'Lift your hips into a straight line', 'That side only'],
+      easier: easy ? null : 'Keep your knees bent and on the floor.',
+      note: pat.key === 'double' ? 'This targets the lower curve only.' : null, video: VIDEOS.plankside
+    });
+    cards.push({
+      name: 'Front plank', fig: sideFig('plank', 'Front plank on forearms', { knees: easy }),
+      why: 'Builds trunk strength to hold your correction.', dose: easy ? '3 × 10 s, on your knees' : '3 × 20 to 30 s',
+      how: ['Elbows under shoulders', 'Straight line from head to heels', 'Breathe; don\'t let the hips sag'],
+      easier: easy ? null : 'Drop to your knees.'
+    });
+    cards.push({
+      name: 'Bird-dog', fig: sideFig('birddog', 'Bird-dog: opposite arm and leg out'),
+      why: 'Trains the back to stay steady while you move.', dose: '5 slow reps each side · hold each 3 breaths',
+      how: ['Hands under shoulders, knees under hips', 'Reach one arm and the opposite leg out', 'Keep your trunk still and long']
+    });
+    cards.push({
+      name: 'Glute bridge', fig: sideFig('bridge', 'Glute bridge: hips lifted'),
+      why: 'Strengthens hips and lower back to support the pelvis.', dose: easy ? '2 × 6 slow reps' : '2 × 10 slow reps',
+      how: ['Lie on your back, knees bent', 'Squeeze your buttocks and lift your hips', 'Lower slowly']
+    });
+
+    const ask = (k, q, opts) => `<div class="q"><p>${q}</p><div class="chips" role="group" aria-label="${q}">` +
+      opts.map(([v, lab]) => `<button type="button" class="chip${mirror[k] === v ? ' on' : ''}" data-k="${k}" data-v="${v}" aria-pressed="${mirror[k] === v}">${lab}</button>`).join('') + '</div></div>';
+    const LR = [['left', 'Left'], ['right', 'Right']];
+    const check = '<details class="mirror"' + (same === null ? ' open' : '') + '><summary>Mirror check: personalise your plan</summary>' +
+      '<p class="fine">Use your body\'s left and right. A phone video of your back helps.</p>' +
+      (t ? ask('hump', 'Bend forward. Which side of your upper back is higher?', [...LR, ['none', 'Even'], ['unsure', 'Not sure']]) : '') +
+      (l ? ask('crease', 'Standing, which side of your waist has the deeper crease?', [...LR, ['even', 'Even'], ['unsure', 'Not sure']]) : '') +
+      ask('pelvis', 'Do your hips look shifted to one side of your feet?', [...LR, ['level', 'No'], ['unsure', 'Not sure']]) +
+      ask('plank', 'Can you hold a front plank for 30 seconds?', [['yes', 'Yes'], ['no', 'No'], ['unsure', 'Not sure']]) +
+      ask('pain', 'How often do you get back pain?', [['never', 'Rarely'], ['sometimes', 'Sometimes'], ['often', 'Often']]) +
+      ask('growing', 'Are you still growing (teenager)?', [['yes', 'Yes'], ['no', 'No']]) + '</details>';
+
+    let summary = '';
+    if (same !== null) summary += '<p class="pchip">Directions now use <b>your</b> left and right.</p>';
+    if (est && est.type) summary += `<p class="pchip">Estimated Schroth type <b>${est.type}</b>: ${TYPE_TEXT[est.type]} A physio will confirm.</p>`;
+    else if (est && !est.type) summary += '<p class="pchip">Your pelvis answer doesn\'t match a standard type. Leave pelvis steps to your physio.</p>';
+    if (mirror.growing === 'yes') summary += '<p class="callout">While you\'re still growing, curves can progress faster. See a spine specialist: a brace may be needed alongside exercise.</p>';
+    if (mirror.pain === 'often') summary += '<p class="callout">With frequent pain, start with the easier versions and keep everything pain-free. Ask your GP about physio.</p>';
+    if (t && !l) summary += '<p class="fine">No side plank: its creator says it can worsen mid-back curves. Ask a physio first.</p>';
+
+    return check + summary +
+      '<h3>Your exercises</h3><div class="exlist">' + cards.map(exerciseCard).join('') + '</div>' +
+      '<h3>How self-correction works</h3>' + stepGrid +
+      '<p class="callout">Go gently and never hold your breath. Stop if you get sharp pain, numbness or dizziness.</p>';
+  }
+
+  function renderExercise(done) {
+    const head = '<p class="eyebrow">Exercise and your curve pattern</p>';
+    if (!done.length) {
+      els.exercise.innerHTML = head + '<p class="empty">Measure a curve to get exercises for its pattern.</p>';
+      return;
+    }
+    const pat = patternOf(done);
+    if (pat.key === 'none') {
+      els.exercise.innerHTML = head + '<h2>No scoliosis-range curve measured</h2><p>Curves under 10° don\'t need scoliosis-specific exercise. Walking, swimming and strength training are good for your back.</p>';
+      return;
+    }
+    const tx = PATTERN_TEXT[pat.key];
+    const rows = pat.list.map(c => {
+      if (c.manual) return `<li><span class="dot" style="background:${CURVE_COLORS[c.i]}"></span>` +
+        `<span class="pl"><b>Curve ${c.i + 1} · ${c.angle.toFixed(1)}°</b> ${c.region}${c.sideKnown ? `, bulges to your ${c.side}` : ''}${c.major ? '' : ' · minor'}</span></li>`;
+      const sel = curves[c.i].region || 'auto';
+      const opts = [['auto', `Estimated: ${c.pred.region} (${Math.round(c.pred.p * 100)}%)`], ['thoracic', REGION_LABEL.thoracic],
+                    ['thoracolumbar', REGION_LABEL.thoracolumbar], ['lumbar', REGION_LABEL.lumbar]]
+        .map(([v, lb]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${lb}</option>`).join('');
+      return `<li><span class="dot" style="background:${CURVE_COLORS[c.i]}"></span>` +
+        `<span class="pl"><b>Curve ${c.i + 1} · ${c.angle.toFixed(1)}°</b> bulges toward the image's ${c.side}${c.major ? '' : ' · minor'}</span>` +
+        `<label class="sr" for="reg${c.i}">Region of curve ${c.i + 1}</label><select id="reg${c.i}" data-i="${c.i}">${opts}</select></li>`;
+    }).join('');
+    const sizeNote = pat.largest >= 40 ? '<p class="callout">At this size, exercise goes alongside review by a spine specialist, not instead of it.</p>' : '';
+    els.exercise.innerHTML = head + `<h2>${tx.title}</h2><ul class="pat">${rows}</ul>` + sizeNote + planHtml(pat) +
+      '<h3>More videos</h3><div class="vids">' + [VIDEOS.overview, ...(pat.key === 'double' ? [VIDEOS.scurve] : []), VIDEOS.fishman].map(videoCard).join('') + '</div>' +
+      '<details class="more"><summary>What physio works on for this pattern</summary>' + tx.focus.map(x => `<p>${x}</p>`).join('') + '</details>' +
+      '<details class="more"><summary>What the evidence says</summary><ul class="bul">' +
+      '<li>Supervised Schroth sessions worked better than the same exercises alone at home.</li>' +
+      '<li>In teenagers with mild curves, Schroth improved the curve more than core exercises; core exercises built more strength. That\'s why planks, bird-dog and bridges are here for strength, alongside self-correction.</li>' +
+      '<li>Side plank: one 25-person study (no comparison group) found curves about 32% smaller; a randomised trial in teenagers found no change.</li>' +
+      '<li>In adults, a trial found less disability with scoliosis-specific rehabilitation than general physio. Side effects were minor.</li></ul></details>' +
+      '<details class="more"><summary>Questions to ask your physio</summary><ul class="bul">' +
+      '<li>Are you trained in Schroth, SEAS or BSPTS?</li><li>What is my curve type? Is my pelvis level?</li>' +
+      '<li>Are these exercises right for me, and how often?</li><li>Do I need a new X-ray or a spine specialist?</li></ul></details>' +
+      '<p class="src">Sources: ' + SRC.map(([lb, u]) => `<a href="${u}" target="_blank" rel="noopener">${lb}</a>`).join(' · ') + '</p>';
+  }
+  els.exercise.addEventListener('change', e => {
+    const s = e.target.closest('select'); if (!s) return;
+    curves[+s.dataset.i].region = s.value; draw();
+  });
+  els.exercise.addEventListener('click', e => {
+    const b = e.target.closest('.chip'); if (!b) return;
+    mirror[b.dataset.k] = b.dataset.v;
+    const open = [...els.exercise.querySelectorAll('details')].map(d => d.open);
+    draw();
+    els.exercise.querySelectorAll('details').forEach((d, i) => { if (open[i] !== undefined) d.open = open[i]; });
+  });
+
+  // ---------- Curves ----------
+  function resetCurves(list) {
+    curves = (list && list.length ? list : [[]]).map(p => ({ pts: p.map(q => ({ ...q })), region: 'auto' }));
+    active = 0; note = '';
+  }
+  function addCurve() {
+    if (curves.length >= MAX_CURVES) return;
+    const prev = curves[curves.length - 1].pts;
+    // In an S-curve the two bends share a vertebra, so start the new curve's top line on the
+    // previous curve's bottom line. The user can drag it onto that vertebra's top edge.
+    const start = prev.length === 4 ? [{ ...prev[2] }, { ...prev[3] }] : [];
+    curves.push({ pts: start, region: 'auto' });
+    active = curves.length - 1;
+    note = start.length ? `Top line copied from curve ${active}'s bottom line; drag it to the top edge of that vertebra if needed.` : '';
+    draw();
+  }
+  els.curves.addEventListener('click', e => {
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.id === 'addCurve') return addCurve();
+    if (t.id === 'rmCurve') { curves.splice(active, 1); active = Math.max(0, active - 1); note = ''; return draw(); }
+    active = +t.dataset.i; note = ''; draw();
+  });
+
+  // ---------- Measuring guide: drawings, live "tap next" banner, magnifier ----------
+  // A drawn spine of 9 vertebrae: the end vertebrae (index 1 and 7) tilt the most; the ones
+  // beyond them tilt less again, which is how you know you've found the right ones.
+  const GV = [[-9, 120, 24], [-18, 112, 52], [-12, 124, 82], [-5, 136, 112], [0, 140, 142], [5, 136, 172], [12, 124, 202], [18, 112, 232], [9, 120, 260]];
+  function gCorner(v, sx, sy) {
+    const [deg, cx, cy] = v, a = deg * Math.PI / 180, w = 46, h = 20;
+    const x = sx * w / 2, y = sy * h / 2;
+    return [cx + x * Math.cos(a) - y * Math.sin(a), cy + x * Math.sin(a) + y * Math.cos(a)];
+  }
+  function gVert(v, cls) {
+    return `<rect class="${cls}" x="-23" y="-10" width="46" height="20" rx="4" transform="translate(${v[1]} ${v[2]}) rotate(${v[0]})"/>`;
+  }
+  function gLine(v, top, cls) {
+    const a = gCorner(v, -1, top ? -1 : 1), b = gCorner(v, 1, top ? -1 : 1);
+    const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy), ux = dx / n, uy = dy / n;
+    return `<line class="${cls}" x1="${(a[0] - ux * 30).toFixed(1)}" y1="${(a[1] - uy * 30).toFixed(1)}" x2="${(b[0] + ux * 34).toFixed(1)}" y2="${(b[1] + uy * 34).toFixed(1)}"/>`;
+  }
+  const gDot = (p, cls, label) => `<circle class="${cls}" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${label ? 8 : 5}"/>` +
+    (label ? `<text class="gn" x="${(p[0]).toFixed(1)}" y="${(p[1] + 4).toFixed(1)}" text-anchor="middle">${label}</text>` : '');
+  function guideFig(kind) {
+    let g = '';
+    const hl = { top: [1], tapTop: [1], tapBottom: [1, 7], bend: [3, 4, 5] }[kind] || [];
+    GV.forEach((v, i) => {
+      let cls = 'gv';
+      if (kind === 'bend' && hl.includes(i)) cls = 'gv gmid';
+      if ((kind === 'top' || kind === 'tapTop' || kind === 'tapBottom') && i === 1) cls = 'gv gtop';
+      if (kind === 'tapBottom' && i === 7) cls = 'gv gbot';
+      g += gVert(v, cls);
+    });
+    if (kind === 'bend') {
+      let d = ''; GV.forEach((v, i) => { d += `${i ? 'L' : 'M'}${v[1]} ${v[2]} `; });
+      g += `<path class="gpath" d="${d}"/>`;
+    }
+    if (kind === 'top') {
+      g += gLine(GV[0], true, 'gl gl-dim') + gLine(GV[1], true, 'gl gl-top') + gLine(GV[2], true, 'gl gl-dim');
+      g += `<text class="gt gok" x="4" y="42">most ✓</text>`;
+    }
+    if (kind === 'tapTop') {
+      g += gLine(GV[1], true, 'gl gl-top') + gDot(gCorner(GV[1], -1, -1), 'gd gd-top', '1') + gDot(gCorner(GV[1], 1, -1), 'gd gd-top', '2');
+    }
+    if (kind === 'tapBottom') {
+      g += gLine(GV[1], true, 'gl gl-top') + gLine(GV[7], false, 'gl gl-bot');
+      g += gDot(gCorner(GV[1], -1, -1), 'gd gd-top', '1') + gDot(gCorner(GV[1], 1, -1), 'gd gd-top', '2');
+      g += gDot(gCorner(GV[7], -1, 1), 'gd gd-bot', '3') + gDot(gCorner(GV[7], 1, 1), 'gd gd-bot', '4');
+    }
+    return `<svg class="gfig" viewBox="0 0 220 280" role="img" aria-label="${kind}">${g}</svg>`;
+  }
+  // Mistake drawings: one vertebra each
+  function mistakeFig(kind) {
+    const v = [-14, 70, 40];
+    let g = gVert(v, 'gv gtop');
+    if (kind === 'middle') g += gDot([70, 40], 'gd gd-bad') + gDot(gCorner(v, -1, -1), 'gd gd-top') + gDot(gCorner(v, 1, -1), 'gd gd-top');
+    if (kind === 'edge') g += gDot(gCorner(v, -1, 1), 'gd gd-bad') + gDot(gCorner(v, 1, 1), 'gd gd-bad') + gLine(v, false, 'gl gl-bad');
+    if (kind === 'ribs') g += `<path class="grib" d="M100 30 Q130 26 138 50"/><path class="grib" d="M40 34 Q12 30 4 52"/>` + gDot([128, 31], 'gd gd-bad') + gDot(gCorner(v, 1, -1), 'gd gd-top');
+    return `<svg class="mfig" viewBox="0 0 140 76" role="img" aria-label="${kind}">${g}</svg>`;
+  }
+  // Tiny vertebra for the banner, with the corner to tap next filled in
+  function cornerIcon(n, color) {
+    const v = n < 2 ? [-14, 26, 17] : [14, 26, 17];
+    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+    let g = `<rect class="iv" x="-15" y="-8" width="30" height="16" rx="3" transform="translate(${v[1]} ${v[2]}) rotate(${v[0]})"/>`;
+    const a = v[0] * Math.PI / 180;
+    corners.forEach(([sx, sy], i) => {
+      const x = sx * 15, y = sy * 8, px = v[1] + x * Math.cos(a) - y * Math.sin(a), py = v[2] + x * Math.sin(a) + y * Math.cos(a);
+      const target = i === n, edge = n < 2 ? sy < 0 : sy > 0;
+      if (edge) g += `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="${target ? 4.5 : 2.5}" ${target ? `fill="${color}" stroke="#050709" stroke-width="1"` : 'class="ic"'}/>`;
+    });
+    return `<svg class="cicon" viewBox="0 0 52 34" aria-hidden="true">${g}</svg>`;
+  }
+  const TAP_TEXT = [
+    ['Tap 1 of 4', 'Top vertebra: the <b>left</b> corner of its <b>top</b> edge'],
+    ['Tap 2 of 4', 'Same vertebra: the <b>right</b> corner of its <b>top</b> edge'],
+    ['Tap 3 of 4', 'Bottom vertebra, tilted the other way: the <b>left</b> corner of its <b>bottom</b> edge'],
+    ['Tap 4 of 4', 'Same vertebra: the <b>right</b> corner of its <b>bottom</b> edge']
+  ];
+  function renderTapNext() {
+    if (mode === 'manual') { els.tapnext.innerHTML = '<span class="tn-done" aria-hidden="true">✓</span><span>Using the angles you typed in. Switch to <b>Measure on my X-ray</b> to mark lines.</span>'; return; }
+    const n = cur().length, col = CURVE_COLORS[active];
+    if (n < 4) {
+      els.tapnext.innerHTML = cornerIcon(n, col) + `<span><b class="tn-step" style="color:${col}">${TAP_TEXT[n][0]}</b> ${TAP_TEXT[n][1]}</span>`;
+    } else {
+      els.tapnext.innerHTML = `<span class="tn-done" aria-hidden="true">✓</span><span><b>Curve ${active + 1} marked.</b> Drag a point to adjust. Try moving a line to the vertebra above or below, and keep whichever gives the bigger angle.</span>`;
+    }
+  }
+  // Fill the guide drawings once
+  document.querySelectorAll('[data-gfig]').forEach(el => { el.innerHTML = guideFig(el.dataset.gfig); });
+  document.querySelectorAll('[data-mfig]').forEach(el => { el.innerHTML = mistakeFig(el.dataset.mfig); });
+
+  // Magnifier while tapping or dragging: your finger hides the point on a phone
+  let loupe = null;
+  function drawLoupe() {
+    if (!loupe || !source) return;
+    const R = Math.round(Math.min(cv.width, cv.height) * 0.17), Z = 2.6, src = R / Z;
+    const left = loupe.x > cv.width / 2, cx = left ? R + 12 : cv.width - R - 12, cy = loupe.y < cv.height * 0.35 ? cv.height - R - 12 : R + 12;
+    const sxScale = (source.width || source.naturalWidth) / cv.width, syScale = (source.height || source.naturalHeight) / cv.height;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.closePath();
+    ctx.fillStyle = '#000'; ctx.fill(); ctx.clip();
+    ctx.filter = `brightness(${els.bri.value}%) contrast(${els.con.value}%)`;
+    ctx.drawImage(source, (loupe.x - src) * sxScale, (loupe.y - src) * syScale, 2 * src * sxScale, 2 * src * syScale, cx - R, cy - R, 2 * R, 2 * R);
+    ctx.filter = 'none';
+    // other points of this curve, magnified
+    const col = CURVE_COLORS[active];
+    curves[active].pts.forEach(q => {
+      const qx = cx + (q.x - loupe.x) * Z, qy = cy + (q.y - loupe.y) * Z;
+      if (Math.hypot(qx - cx, qy - cy) < R) { ctx.beginPath(); ctx.arc(qx, qy, 4, 0, Math.PI * 2); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke(); }
+    });
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, cv.width / 500);
+    ctx.beginPath(); ctx.moveTo(cx - R, cy); ctx.lineTo(cx - 6, cy); ctx.moveTo(cx + 6, cy); ctx.lineTo(cx + R, cy);
+    ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy - 6); ctx.moveTo(cx, cy + 6); ctx.lineTo(cx, cy + R); ctx.stroke();
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.lineWidth = Math.max(2, cv.width / 300); ctx.strokeStyle = '#e3e9ed'; ctx.stroke();
+  }
+
+  // ---------- Typing in known angles (no X-ray needed) ----------
+  let mode = 'measure';
+  let manual = { shape: 'C', list: [{ angle: '', region: 'thoracic', side: 'unsure' }, { angle: '', region: 'lumbar', side: 'unsure' }] };
+  const shapeIcon = shape => {
+    const d = shape === 'C' ? 'M20 4 Q34 22 20 40' : 'M20 4 Q32 13 20 22 Q8 31 20 40';
+    return `<svg class="shape-ic" viewBox="0 0 40 44" aria-hidden="true"><path d="${d}"/></svg>`;
+  };
+  function manualDone() {
+    const n = manual.shape === 'S' ? 2 : 1;
+    const list = manual.list.slice(0, n).map(c => ({ ...c }));
+    // in an S-curve the two bends bulge opposite ways; fill in one side from the other
+    if (n === 2) {
+      if (list[0].side === 'unsure' && list[1].side !== 'unsure') list[0].side = opp(list[1].side);
+      if (list[1].side === 'unsure' && list[0].side !== 'unsure') list[1].side = opp(list[0].side);
+    }
+    return list.map((c, i) => ({ i, c })).filter(o => +o.c.angle > 0 && +o.c.angle <= 120)
+      .map(o => ({ i: o.i, angle: +o.c.angle, t1: NaN, t2: NaN, manual: o.c }));
+  }
+  function renderManualForm() {
+    const n = manual.shape === 'S' ? 2 : 1;
+    const sideChips = i => [['left', 'My left'], ['right', 'My right'], ['unsure', 'Not sure']].map(([v, lb]) =>
+      `<button type="button" class="chip${manual.list[i].side === v ? ' on' : ''}" data-mside="${i}" data-v="${v}" aria-pressed="${manual.list[i].side === v}">${lb}</button>`).join('');
+    const regions = i => ['thoracic', 'thoracolumbar', 'lumbar'].map(r =>
+      `<option value="${r}"${manual.list[i].region === r ? ' selected' : ''}>${REGION_LABEL[r]}</option>`).join('');
+    let h = '<p class="gintro">Use the Cobb angle from your X-ray report. A report that says "right thoracic 37°" means a mid-back curve of 37° that bulges to your right.</p>' +
+      '<div class="chips shapes" role="group" aria-label="Curve shape">' +
+      ['C', 'S'].map(sh => `<button type="button" class="chip shape${manual.shape === sh ? ' on' : ''}" data-shape="${sh}" aria-pressed="${manual.shape === sh}">${shapeIcon(sh)}${sh === 'C' ? 'C-curve · one bend' : 'S-curve · two bends'}</button>`).join('') + '</div>';
+    for (let i = 0; i < n; i++) {
+      h += `<fieldset class="mcurve"><legend><span class="dot" style="background:${CURVE_COLORS[i]}"></span>${n === 2 ? (i === 0 ? 'Upper curve' : 'Lower curve') : 'Your curve'}</legend>` +
+        `<div class="mrow"><label for="manA${i}">Cobb angle</label><span class="mangle"><input id="manA${i}" data-mangle="${i}" type="number" inputmode="decimal" min="1" max="120" step="0.5" placeholder="e.g. 37.5" value="${manual.list[i].angle}"><span>°</span></span></div>` +
+        `<div class="mrow"><label for="manR${i}">Where</label><select id="manR${i}" data-mregion="${i}">${regions(i)}</select></div>` +
+        `<div class="mrow"><span class="mlab">Bulges to</span><div class="chips">${sideChips(i)}</div></div></fieldset>`;
+    }
+    h += '<p class="fine" id="manErr" aria-live="polite"></p>';
+    els.manualForm.innerHTML = h;
+  }
+  function applyMode() {
+    els.forget.hidden = !originalBlob && mode !== 'manual';
+    els.manualForm.hidden = mode !== 'manual';
+    els.guideMeasure.hidden = mode === 'manual';
+    document.querySelectorAll('[data-mode]').forEach(b => { const on = b.dataset.mode === mode; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+    if (mode === 'manual') renderManualForm();
+  }
+  document.querySelector('.modes').addEventListener('click', e => {
+    const b = e.target.closest('[data-mode]'); if (!b) return;
+    mode = b.dataset.mode; applyMode(); draw();
+  });
+  els.manualForm.addEventListener('click', e => {
+    const sh = e.target.closest('[data-shape]');
+    if (sh) {
+      manual.shape = sh.dataset.shape;
+      if (manual.shape === 'S' && manual.list[1].region === 'thoracic') manual.list[1].region = 'lumbar';
+      renderManualForm(); draw(); return;
+    }
+    const sd = e.target.closest('[data-mside]');
+    if (sd) { manual.list[+sd.dataset.mside].side = sd.dataset.v; renderManualForm(); draw(); }
+  });
+  els.manualForm.addEventListener('input', e => {
+    const a = e.target.closest('[data-mangle]');
+    if (!a) return;
+    manual.list[+a.dataset.mangle].angle = a.value;
+    const v = +a.value, err = els.manualForm.querySelector('#manErr');
+    err.textContent = a.value && !(v > 0 && v <= 120) ? 'Enter an angle between 1° and 120°.' : '';
+    draw();
+  });
+  els.manualForm.addEventListener('change', e => {
+    const r = e.target.closest('[data-mregion]');
+    if (r) { manual.list[+r.dataset.mregion].region = r.value; draw(); }
+  });
+
+  // ---------- Input ----------
+  function toCanvas(e) {
+    const rc = cv.getBoundingClientRect();
+    return { x: (e.clientX - rc.left) * cv.width / rc.width, y: (e.clientY - rc.top) * cv.height / rc.height };
+  }
+  function hit(p) {
+    const rc = cv.getBoundingClientRect(), rad = 22 * cv.width / rc.width;
+    let best = null, bd = rad;
+    // check the active curve first so overlapping points favour it
+    const order = [active, ...curves.map((_, i) => i).filter(i => i !== active)];
+    order.forEach(ci => curves[ci].pts.forEach((q, i) => {
+      const d = Math.hypot(q.x - p.x, q.y - p.y);
+      if (d < bd - (ci === active ? 0 : 0.5)) { bd = d; best = { c: ci, i }; }
+    }));
+    return best;
+  }
+  cv.addEventListener('pointerdown', e => {
+    const p = toCanvas(e), h = hit(p);
+    if (h) { drag = h; active = h.c; loupe = curves[h.c].pts[h.i]; cv.setPointerCapture(e.pointerId); draw(); }
+    else if (cur().length < 4) { cur().push(p); drag = { c: active, i: cur().length - 1 }; loupe = p; note = ''; cv.setPointerCapture(e.pointerId); draw(); }
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!drag) { cv.style.cursor = hit(toCanvas(e)) ? 'grab' : (cur().length < 4 ? 'crosshair' : 'default'); return; }
+    const p = toCanvas(e);
+    curves[drag.c].pts[drag.i] = { x: Math.max(0, Math.min(cv.width, p.x)), y: Math.max(0, Math.min(cv.height, p.y)) };
+    loupe = curves[drag.c].pts[drag.i];
+    draw();
+  });
+  const endDrag = () => { if (drag) { drag = null; loupe = null; draw(); } };
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+
+  els.undo.addEventListener('click', () => { cur().pop(); note = ''; draw(); });
+  els.reset.addEventListener('click', () => { resetCurves(); draw(); });
+  [els.bri, els.con].forEach(i => i.addEventListener('input', draw));
+
+  // ---------- Auto-crop ----------
+  // Finds the skeleton in a photo of a screen: bright, grey, textured pixels, minus flat UI,
+  // long horizontal strips (toolbars, taskbar) and thin lines (screen edges); then the largest
+  // roughly portrait blob. Same steps as ml/autocrop.py.
+  function autoCropBox(img) {
+    const W = 240, s = W / img.naturalWidth, H = Math.round(img.naturalHeight * s);
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, W, H);
+    const d = g.getImageData(0, 0, W, H).data, N = W * H;
+    const mx = new Float32Array(N); let mask = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      const r = d[i * 4], gg = d[i * 4 + 1], b = d[i * 4 + 2];
+      const hi = Math.max(r, gg, b), lo = Math.min(r, gg, b);
+      mx[i] = hi;
+      mask[i] = hi > 105 && (hi - lo) / (hi + 1) < 0.2 ? 1 : 0;
+    }
+    // local std over 9x9 via integral images; flat areas are UI, not bone
+    const S = new Float64Array((W + 1) * (H + 1)), S2 = new Float64Array((W + 1) * (H + 1));
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const v = mx[y * W + x], k = (y + 1) * (W + 1) + x + 1;
+      S[k] = v + S[k - 1] + S[k - W - 1] - S[k - W - 2];
+      S2[k] = v * v + S2[k - 1] + S2[k - W - 1] - S2[k - W - 2];
+    }
+    const box = (A, x0, y0, x1, y1) => A[y1 * (W + 1) + x1] - A[y0 * (W + 1) + x1] - A[y1 * (W + 1) + x0] + A[y0 * (W + 1) + x0];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x; if (!mask[i]) continue;
+      const x0 = Math.max(0, x - 4), y0 = Math.max(0, y - 4), x1 = Math.min(W, x + 5), y1 = Math.min(H, y + 5);
+      const n = (x1 - x0) * (y1 - y0), m = box(S, x0, y0, x1, y1) / n;
+      if (box(S2, x0, y0, x1, y1) / n - m * m < 36) mask[i] = 0;
+    }
+    // drop horizontal runs wider than 40% of the frame
+    const maxRun = Math.floor(0.4 * W);
+    for (let y = 0; y < H; y++) {
+      let x = 0;
+      while (x < W) {
+        if (mask[y * W + x]) { let e = x; while (e < W && mask[y * W + e]) e++; if (e - x > maxRun) for (let k = x; k < e; k++) mask[y * W + k] = 0; x = e; }
+        else x++;
+      }
+    }
+    const morph = (m, erode) => {
+      const o = new Uint8Array(N);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x, nb = [m[i], y > 0 ? m[i - W] : 0, y < H - 1 ? m[i + W] : 0, x > 0 ? m[i - 1] : 0, x < W - 1 ? m[i + 1] : 0];
+        o[i] = erode ? (nb.every(Boolean) ? 1 : 0) : (nb.some(Boolean) ? 1 : 0);
+      }
+      return o;
+    };
+    mask = morph(morph(mask, true), false);
+    const joined = morph(mask, false);
+    // largest blob, weighted towards portrait shapes
+    const lab = new Int32Array(N); let best = null, bestScore = 0, cur = 0;
+    const q = new Int32Array(N);
+    for (let start = 0; start < N; start++) {
+      if (!joined[start] || lab[start]) continue;
+      cur++; let qh = 0, qt = 0; q[qt++] = start; lab[start] = cur;
+      let score = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
+      while (qh < qt) {
+        const i = q[qh++], y = (i / W) | 0, x = i - y * W;
+        score += mask[i]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        const nbs = [y > 0 ? i - W : -1, y < H - 1 ? i + W : -1, x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1];
+        for (const j of nbs) if (j >= 0 && joined[j] && !lab[j]) { lab[j] = cur; q[qt++] = j; }
+      }
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1, fill = score / (bw * bh);
+      const sc = fill > 0.05 ? score * Math.min(1, bh / bw) : 0;
+      if (sc > bestScore) { bestScore = sc; best = [x0, y0, x1, y1]; }
+    }
+    if (!best) return null;
+    const pad = 4, [x0, y0, x1, y1] = best;
+    const r = { x: Math.max(0, x0 - pad) / s, y: Math.max(0, y0 - pad) / s,
+                w: (Math.min(W, x1 + pad) - Math.max(0, x0 - pad)) / s, h: (Math.min(H, y1 + pad) - Math.max(0, y0 - pad)) / s };
+    // only trust it if it found something sizeable and actually removed a fair amount
+    const frac = (r.w * r.h) / (img.naturalWidth * img.naturalHeight);
+    return frac > 0.04 && frac < 0.9 ? r : null;
+  }
+  window.SpineAngle.autoCropBox = autoCropBox;
+
+  let original = null, cropBox = null, cropped = false;
+  function showImage(keepCurves) {
+    if (cropped && cropBox) {
+      const c = document.createElement('canvas');
+      c.width = Math.round(cropBox.w); c.height = Math.round(cropBox.h);
+      c.getContext('2d').drawImage(original, cropBox.x, cropBox.y, cropBox.w, cropBox.h, 0, 0, c.width, c.height);
+      source = c; sizeTo(c.width, c.height);
+      els.src.textContent = 'Your X-ray · auto-cropped';
+    } else {
+      source = original; sizeTo(original.naturalWidth, original.naturalHeight);
+      els.src.textContent = `Your X-ray · ${original.naturalWidth}×${original.naturalHeight}`;
+    }
+    els.crop.hidden = !cropBox;
+    els.crop.textContent = cropped ? 'Undo crop' : 'Auto-crop';
+    els.forget.hidden = !originalBlob && mode !== 'manual';
+    if (!keepCurves) resetCurves();
+    draw();
+  }
+  els.crop.addEventListener('click', () => { cropped = !cropped; showImage(); });
+
+  // ---------- Saving on this device ----------
+  // The X-ray and measurements are kept in this browser's IndexedDB. Nothing leaves the device.
+  let originalBlob = null, saveTimer = null;
+  function idb(mode, fn) {
+    return new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open('spineangle', 1); } catch (e) { return reject(e); }
+      req.onupgradeneeded = () => req.result.createObjectStore('state');
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => {
+        try {
+          const tx = req.result.transaction('state', mode), r = fn(tx.objectStore('state'));
+          tx.oncomplete = () => resolve(r && r.result);
+          tx.onerror = () => reject(tx.error);
+        } catch (e) { reject(e); }
+      };
+    });
+  }
+  function scheduleSave() {
+    if (!originalBlob && mode !== 'manual') return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const state = {
+        blob: originalBlob, cropBox, cropped, active,
+        curves: curves.map(c => ({ pts: c.pts, region: c.region })),
+        bri: els.bri.value, con: els.con.value, cw: cv.width, ch: cv.height, savedAt: Date.now(), mirror, mode, manual
+      };
+      idb('readwrite', st => st.put(state, 'current'))
+        .then(() => { els.saved.textContent = `Saved on this device · ${new Date(state.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`; })
+        .catch(() => { els.saved.textContent = 'This browser can\'t save. Your work stays until you close the page.'; });
+    }, 400);
+  }
+  async function restore() {
+    let st;
+    try { st = await idb('readonly', store => store.get('current')); } catch (e) { return; }
+    if (!st) return;
+    if (st.manual) manual = st.manual;
+    if (st.mode) mode = st.mode;
+    if (st.mirror) mirror = { ...mirror, ...st.mirror };
+    applyMode();
+    if (!st.blob) {
+      els.forget.hidden = mode !== 'manual';
+      if (mode === 'manual') els.saved.textContent = `Saved on this device · ${new Date(st.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+      draw(); return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      original = img; originalBlob = st.blob; cropBox = st.cropBox; cropped = !!(st.cropped && st.cropBox);
+      els.bri.value = st.bri || 100; els.con.value = st.con || 110;
+      showImage(true);
+      const sx = cv.width / (st.cw || cv.width), sy = cv.height / (st.ch || cv.height);
+      curves = (st.curves && st.curves.length ? st.curves : [{ pts: [], region: 'auto' }])
+        .map(c => ({ pts: c.pts.map(q => ({ x: q.x * sx, y: q.y * sy })), region: c.region || 'auto' }));
+      active = Math.min(st.active || 0, curves.length - 1); note = '';
+      if (st.mirror) mirror = { ...mirror, ...st.mirror };
+      els.src.textContent = 'Your X-ray · saved';
+      els.saved.textContent = `Saved on this device · ${new Date(st.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+      draw();
+    };
+    img.src = URL.createObjectURL(st.blob);
+  }
+  els.forget.addEventListener('click', () => {
+    idb('readwrite', st => st.delete('current')).catch(() => {});
+    originalBlob = null; original = null; cropBox = null; cropped = false;
+    mode = 'measure'; manual = { shape: 'C', list: [{ angle: '', region: 'thoracic', side: 'unsure' }, { angle: '', region: 'lumbar', side: 'unsure' }] };
+    applyMode();
+    els.crop.hidden = true; els.forget.hidden = true; els.saved.textContent = '';
+    showExample();
+  });
+
+  function loadFile(f) {
+    if (!f || !/^image\//.test(f.type)) { els.src.textContent = 'That file is not an image. Use PNG or JPEG.'; return; }
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = () => {
+      original = img; originalBlob = f;
+      try { cropBox = autoCropBox(img); } catch (e) { cropBox = null; }
+      cropped = !!cropBox;
+      showImage();
+    };
+    img.onerror = () => { els.src.textContent = 'Could not open that image. Try a PNG or JPEG export.'; };
+    img.src = url;
+  }
+  els.file.addEventListener('change', e => loadFile(e.target.files[0]));
+  ['dragenter', 'dragover'].forEach(t => els.stage.addEventListener(t, e => { e.preventDefault(); els.stage.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(t => els.stage.addEventListener(t, e => { e.preventDefault(); els.stage.classList.remove('drag'); }));
+  els.stage.addEventListener('drop', e => loadFile(e.dataTransfer.files[0]));
+
+  // Start with the worked example so the page shows what it does, then bring back a saved X-ray
+  function showExample() {
+    const ex = makeExample();
+    source = ex.canvas; sizeTo(ex.canvas.width, ex.canvas.height); resetCurves(ex.curves);
+    els.src.textContent = 'Example S-shaped spine · synthetic';
+    draw();
+  }
+  showExample();
+  restore();
+})();
+</script>
+
+</body>
+</html>

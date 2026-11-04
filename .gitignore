@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Model outputs and data (never commit medical images)
+checkpoints/
+*.pt
+results.csv
+bland_altman.png
+data/
+boostnet_labeldata/
+*.dcm
+
+# OS
+.DS_Store
