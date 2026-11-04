@@ -2,6 +2,8 @@
 
 Measure a scoliosis Cobb angle on your own X-ray and get an exercise plan for your curve, in the browser. Nothing is uploaded.
 
+**[Try the live demo →](https://nicoleleee8532.github.io/spineangle/)**
+
 ![SpineAngle measuring an S-shaped spine](docs/img/measure.png)
 
 > Research and educational prototype. Not a medical device and not a diagnosis. Manual Cobb measurements vary by about 5° even between clinicians, and exercise advice here is general: a physiotherapist trained in scoliosis-specific methods should check it.
@@ -36,7 +38,7 @@ It was also a way to build a complete machine learning project end to end on a p
 
 ## Try it
 
-Open [`index.html`](index.html) in a browser. No install or build step.
+Use the [live demo](https://nicoleleee8532.github.io/spineangle/), or open [`index.html`](index.html) in a browser. No install or build step.
 
 ## The machine learning
 
