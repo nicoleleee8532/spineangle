@@ -20,7 +20,8 @@ It was also a way to build a complete machine learning project end to end on a p
 
 **Measure**
 - Upload an X-ray, including a phone photo of a hospital screen: it auto-crops to the skeleton.
-- Tap two corners on each of the two most tilted vertebrae. A picture guide, a live "tap next" prompt and a magnifier show exactly where.
+- **Auto-measure:** tap the top of the shoulders and the top of the hips, and a model trained on 481 real X-rays finds all 17 vertebrae and places the Cobb lines for you. You can drag any point to fix it.
+- Or measure by hand: tap two corners on each of the two most tilted vertebrae. A picture guide, a live "tap next" prompt and a magnifier show exactly where.
 - Measure up to 3 curves, so S-shaped spines work too. Or type in angles you already know.
 
 **Understand**
@@ -32,7 +33,7 @@ It was also a way to build a complete machine learning project end to end on a p
 - Exercises with drawings mirrored to your curve: self-correction, Schroth-style breathing, side plank (lower-back curves only), front plank, bird-dog and glute bridge, with easier versions when needed.
 - Videos from scoliosis clinics and therapists, questions to ask a physio, and safety rules.
 
-**Private by design:** everything runs in the browser. Your X-ray and measurements are saved only on your device, and one button deletes them.
+**Private by design:** everything runs in the browser, including the model (ONNX Runtime Web, 6.7 MB). Your X-ray and measurements are saved only on your device, and one button deletes them.
 
 <img src="docs/img/exercise-plan.png" alt="Personal exercise plan with drawings" width="300"> <img src="docs/img/self-correction.png" alt="Self-correction steps drawn for the user's curve" width="300">
 
@@ -44,7 +45,9 @@ Use the [live demo](https://nicoleleee8532.github.io/spineangle/), or open [`ind
 
 | Part | What | Status |
 |------|------|--------|
-| Landmark model (`ml/model.py`, `train.py`) | U-Net predicting 68 vertebral corner landmarks (T1–L5) as heatmaps, soft-argmax to coordinates, optional differentiable Cobb-angle loss | Pipeline built and smoke-tested; needs the AASCE dataset and a GPU to train |
+| Vertebra model (`ml/vertebra.py`, `train_vertebra.py`) | U-Net that finds the 17 vertebra centres (T1–L5) as a heatmap, then regresses vectors to each one's 4 corners, after the strongest AASCE solutions (Yi et al., MICCAI 2020). Trained on AASCE with photo-style augmentation (zoom, tilt, blur, glare, noise) so phone photos of screens work | **Trained and live in the browser** |
+| Corner heatmap model (`ml/model.py`, `train.py`) | First attempt: 68 corner heatmaps with soft-argmax | Replaced: too hard to learn from 400 images on CPU |
+| Export (`ml/export_onnx.py`) | ONNX with fp16 weights, checked against PyTorch (0.01 px) | Done |
 | Cobb geometry (`ml/cobb.py`) | Primary and secondary curves from landmarks; same maths as the browser, checked by tests | Done |
 | Curve pattern model (`ml/pattern.py`) | Softmax regression predicting curve region from manual taps only; labels from true vertebra levels | 88.3% test accuracy on synthetic spines vs 84.9% for a height rule; retrain on AASCE |
 | Auto-crop (`ml/autocrop.py`, in the browser too) | Finds the skeleton in a photo of a screen: bright, grey, textured pixels, minus flat UI, toolbars and thin edges | Done |
@@ -83,10 +86,22 @@ python pattern.py --synthetic 3000 --out pattern_model.json
 
 ### Results
 
-| Model | Landmark MRE | Cobb MAE (MT) | SMAPE |
-|-------|--------------|---------------|-------|
-| Manual, intra-observer (20 images marked twice) | – | _to measure_ | – |
-| U-Net base 32 | _to fill_ | _to fill_ | _to fill_ |
+On the 128 AASCE test X-rays the model never saw during training (base 16, 3.3M parameters, 50 epochs on 2 CPU cores):
+
+| Metric | Result |
+|--------|--------|
+| Landmark error | 3.3% of image height |
+| Cobb MAE, official AASCE formula (curve 1 / 2 / 3) | 3.3° / 4.5° / 4.9° |
+| Challenge SMAPE | 9.1% (target ≤ 10%) |
+| Largest curve within 5° | 77% |
+| App's endplate method: MAE, within 5° / 10° | 4.3°, 67% / 95% |
+| Severity band matches the label | 84% |
+
+For scale, two doctors measuring the same X-ray typically differ by about 5°. On my own X-ray (a phone photo of a hospital screen) it measured 41° against the doctor's 37.5°.
+
+The model is a research project, not a medical device: always check the lines it places, and rely on your doctor's measurement.
+
+Data: AASCE 2019 challenge (Wu et al., *Automatic landmark estimation for adolescent idiopathic scoliosis assessment using BoostNet*, MICCAI 2017), used for research only and not included in this repository.
 
 ## Docs
 
@@ -105,8 +120,7 @@ DESIGN.md            system design
 
 ## Roadmap
 
-- Train the landmark model on AASCE and fill in the results table
-- Run the model in the browser (ONNX Runtime Web) so automatic mode stays on-device too
+- Train a larger model on a GPU
 - Validate on a second dataset, and add uncertainty to the angle
 
 Built by Nicole Lee En Xin, MSc AI, University of Bristol.
