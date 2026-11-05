@@ -290,7 +290,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
           <input id="file" type="file" accept="image/png,image/jpeg,image/webp">
           <button class="btn btn-primary" id="auto" type="button" title="Find the vertebrae and draw the lines for you">Auto-measure</button>
           <button class="btn btn-ghost" id="crop" type="button" hidden>Undo crop</button>
-          <button class="btn btn-ghost" id="undo" type="button">Undo point</button>
+          <button class="btn btn-ghost" id="undo" type="button" title="Undo (Ctrl+Z)">Undo</button>
           <button class="btn btn-ghost" id="reset" type="button">Clear</button>
           <button class="btn btn-ghost" id="forget" type="button" hidden>Forget saved data</button>
         </div>
@@ -594,7 +594,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
       else if (s === 6) li.className = '';
       else li.className = n >= s + 2 ? 'done' : n >= s ? 'now' : '';
     });
-    els.undo.disabled = n === 0;
+    els.undo.disabled = !(undoStack || []).some(h => h.src === source);
 
     const done = mode === 'manual' ? manualDone() : curves.map((c, i) => ({ i, c })).filter(o => o.c.pts.length === 4)
       .map(o => ({ i: o.i, ...cobb(o.c.pts) }));
@@ -980,8 +980,22 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   });
 
   // ---------- Curves ----------
+  // Undo history: a snapshot before every change (a tap, a drag, auto-measure, reset).
+  var undoStack = [];
+  function snap() {
+    undoStack.push({ src: source, active, autoDots, guides: guides && guides.map(g => ({ ...g })),
+      curves: curves.map(c => ({ region: c.region, pts: c.pts.map(q => ({ ...q })) })) });
+    if (undoStack.length > 60) undoStack.shift();
+  }
+  function undo() {
+    while (undoStack.length && undoStack[undoStack.length - 1].src !== source) undoStack.pop();
+    const h = undoStack.pop(); if (!h) return;
+    curves = h.curves; active = Math.min(h.active, curves.length - 1); autoDots = h.autoDots; guides = h.guides;
+    frame = null; drag = null; loupe = null; note = ''; els.auto.textContent = 'Auto-measure';
+    draw();
+  }
   function resetCurves(list) {
-    autoDots = null;
+    autoDots = null; guides = null;
     curves = (list && list.length ? list : [[]]).map(p => ({ pts: p.map(q => ({ ...q })), region: 'auto' }));
     active = 0; note = '';
   }
@@ -1209,23 +1223,45 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   }
   cv.addEventListener('pointerdown', e => {
     if (frame) return frameTap(toCanvas(e));
-    const p = toCanvas(e), h = hit(p);
+    const p = toCanvas(e), h = hit(p), g = h ? -1 : hitGuide(p);
+    if (g >= 0) { snap(); drag = { guide: g, moved: false }; cv.setPointerCapture(e.pointerId); return draw(); }
+    if (h || cur().length < 4) snap();
     if (h) { drag = h; active = h.c; loupe = curves[h.c].pts[h.i]; cv.setPointerCapture(e.pointerId); draw(); }
     else if (cur().length < 4) { cur().push(p); drag = { c: active, i: cur().length - 1 }; loupe = p; note = ''; cv.setPointerCapture(e.pointerId); draw(); }
   });
   cv.addEventListener('pointermove', e => {
-    if (!drag) { cv.style.cursor = hit(toCanvas(e)) ? 'grab' : (cur().length < 4 ? 'crosshair' : 'default'); return; }
+    if (!drag) {
+      const q = toCanvas(e);
+      cv.style.cursor = hit(q) ? 'grab' : hitGuide(q) >= 0 ? 'ns-resize' : (cur().length < 4 ? 'crosshair' : 'default');
+      return;
+    }
     const p = toCanvas(e);
+    if (drag.guide !== undefined) {
+      guides[drag.guide] = { x: Math.max(0, Math.min(cv.width, p.x)), y: Math.max(0, Math.min(cv.height, p.y)) };
+      drag.moved = true;
+      return draw();
+    }
     curves[drag.c].pts[drag.i] = { x: Math.max(0, Math.min(cv.width, p.x)), y: Math.max(0, Math.min(cv.height, p.y)) };
     loupe = curves[drag.c].pts[drag.i];
     draw();
   });
-  const endDrag = () => { if (drag) { drag = null; loupe = null; draw(); } };
+  const endDrag = () => {
+    if (!drag) return;
+    const g = drag; drag = null; loupe = null;
+    // moving a shoulder or hip line measures again with the new framing
+    if (g.guide !== undefined) { if (g.moved) autoMeasure(guides); else undoStack.pop(); }
+    draw();
+  };
   cv.addEventListener('pointerup', endDrag);
   cv.addEventListener('pointercancel', endDrag);
 
-  els.undo.addEventListener('click', () => { cur().pop(); note = ''; draw(); });
-  els.reset.addEventListener('click', () => { resetCurves(); draw(); });
+  els.undo.addEventListener('click', undo);
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) {
+      e.preventDefault(); undo();
+    }
+  });
+  els.reset.addEventListener('click', () => { snap(); resetCurves(); draw(); });
   [els.bri, els.con].forEach(i => i.addEventListener('input', draw));
 
   // ---------- Auto-measure (machine learning, runs in this browser) ----------
@@ -1307,6 +1343,15 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   // whole-body film show the neck and skull too, which the model would count as vertebrae,
   // and the spine is too small in the frame; framing fixes both (see ml/inference.py).
   let frame = null;                    // { taps: [] } while waiting for the two taps
+  let guides = null;                   // the two taps after measuring; drag them to re-measure
+  const GUIDE_TEXT = ['Shoulders', 'Hips'];
+  function hitGuide(p) {
+    if (!guides) return -1;
+    const rc = cv.getBoundingClientRect(), rad = 16 * cv.width / rc.width;
+    let best = -1, bd = rad;
+    guides.forEach((g, i) => { const d = Math.abs(p.y - g.y); if (d < bd) { bd = d; best = i; } });
+    return best;
+  }
   const FRAME_TEXT = ['Tap the top of the shoulders', 'Now tap the top of the hip bones'];
   function frameBox(a, b) {
     let top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y);
@@ -1326,20 +1371,35 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   function frameTap(p) {
     frame.taps.push(p);
     if (frame.taps.length < 2) return draw();
-    const box = frameBox(frame.taps[0], frame.taps[1]);
+    const taps = frame.taps;
     frame = null;
-    autoMeasure(box);
+    snap();
+    autoMeasure(taps);
   }
   function drawFrame() {
-    if (!frame) return;
-    const lw = Math.max(1.5, cv.width / 320);
-    ctx.save(); ctx.strokeStyle = '#5fd3e8'; ctx.lineWidth = lw; ctx.setLineDash([lw * 4, lw * 3]);
-    frame.taps.forEach(t => { ctx.beginPath(); ctx.moveTo(0, t.y); ctx.lineTo(cv.width, t.y); ctx.stroke(); });
+    const lines = frame ? frame.taps : guides;
+    if (!lines) return;
+    const lw = Math.max(1.5, cv.width / 320), fs = Math.max(11, cv.width / 34);
+    ctx.save(); ctx.strokeStyle = ctx.fillStyle = '#5fd3e8'; ctx.lineWidth = lw;
+    ctx.font = `600 ${fs}px "IBM Plex Sans", sans-serif`; ctx.textBaseline = 'bottom';
+    lines.forEach((t, i) => {
+      const on = drag && drag.guide === i;
+      ctx.globalAlpha = on ? 1 : 0.85;
+      ctx.setLineDash([lw * 4, lw * 3]);
+      ctx.beginPath(); ctx.moveTo(0, t.y); ctx.lineTo(cv.width, t.y); ctx.stroke();
+      ctx.setLineDash([]);
+      if (!frame) {                                   // grip handle + label so it reads as draggable
+        ctx.beginPath(); ctx.arc(t.x, t.y, lw * (on ? 6 : 4.5), 0, Math.PI * 2); ctx.fill();
+        ctx.fillText(GUIDE_TEXT[i] + ' ↕', lw * 3, t.y - lw * 2);
+      }
+    });
     ctx.restore();
   }
 
-  async function autoMeasure(box) {
+  async function autoMeasure(taps) {
     if (!source) return;
+    taps = taps.map(t => ({ ...t }));
+    const box = frameBox(taps[0], taps[1]);
     els.auto.disabled = true; els.auto.textContent = 'Measuring…';
     try {
       const sess = await getSession();
@@ -1357,10 +1417,10 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
       }
       const conf = Array.from(C).reduce((s, v) => s + v, 0) / C.length;
       resetCurves(curvesFromLandmarks(pts));
-      autoDots = pts;
+      autoDots = pts; guides = taps;
       note = conf < 0.35
         ? 'Auto-measure is unsure about this image. Check each line sits on the right vertebra and drag to fix it, or try again with the two taps placed differently.'
-        : 'Lines placed automatically (blue dots are the vertebra corners it found). Check each line sits on the most tilted vertebra and drag any point to adjust.';
+        : 'Lines placed automatically (blue dots are the vertebra corners it found). Check each line sits on the most tilted vertebra and drag any point to adjust. Drag the dashed Shoulders or Hips line to re-measure; Undo goes back a step.';
     } catch (e) {
       note = `Auto-measure didn't work here (${e.message}). You can still place the lines by hand.`;
     } finally {
