@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
-from dataset import STRIDE, SpineDataset, make_synthetic, read_aasce
+from dataset import STRIDE, SpineDataset, make_synthetic, read_aasce, shrink
 from model import LandmarkUNet, cobb_from_coords, soft_argmax
 
 
@@ -76,13 +76,17 @@ def main():
     ap.add_argument("--out", default="checkpoints")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--resume", help="checkpoint to continue from (keeps the epoch count and schedule)")
+    ap.add_argument("--threads", type=int, default=0, help="torch CPU threads (0 = default)")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
+    if args.threads:
+        torch.set_num_threads(args.threads)
     if args.synthetic:
         samples = make_synthetic(args.synthetic, seed=args.seed)
     elif args.data:
-        samples = read_aasce(args.data, "training")
+        samples = shrink(read_aasce(args.data, "training"))
     else:
         ap.error("pass --data or --synthetic")
     tr, va = split(samples, args.val_frac, args.seed)
@@ -99,8 +103,16 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    best = float("inf")
-    for ep in range(1, args.epochs + 1):
+    best, start = float("inf"), 1
+    if args.resume:
+        ck = torch.load(args.resume, map_location=device)
+        model.load_state_dict(ck["model"])
+        if "opt" in ck:
+            opt.load_state_dict(ck["opt"])
+            sched.load_state_dict(ck["sched"])
+        start, best = ck["epoch"] + 1, ck.get("best", best)
+        print(f"resumed from epoch {ck['epoch']}")
+    for ep in range(start, args.epochs + 1):
         t0 = time.time()
         m_tr = run_epoch(model, dl_tr, opt, device, args.cobb_weight, train=True)
         m_va = run_epoch(model, dl_va, opt, device, args.cobb_weight, train=False)
@@ -110,10 +122,10 @@ def main():
               f"({time.time() - t0:.0f}s)")
         ckpt = {"model": model.state_dict(), "base": args.base, "epoch": ep,
                 "version": f"unet-b{args.base}-ep{ep}", "val": m_va}
-        torch.save(ckpt, out / "last.pt")
         if m_va["cobb_mae"] < best:
             best = m_va["cobb_mae"]
             torch.save(ckpt, out / "best.pt")
+        torch.save({**ckpt, "opt": opt.state_dict(), "sched": sched.state_dict(), "best": best}, out / "last.pt")
     print(f"best val Cobb MAE {best:.2f}°  ->  {out / 'best.pt'}")
 
 

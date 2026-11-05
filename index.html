@@ -297,6 +297,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
         <div class="btn-row">
           <label class="btn btn-primary" for="file">Upload X-ray</label>
           <input id="file" type="file" accept="image/png,image/jpeg,image/webp">
+          <button class="btn btn-primary" id="auto" type="button" title="Find the vertebrae and draw the lines for you">Auto-measure</button>
           <button class="btn btn-ghost" id="crop" type="button" hidden>Undo crop</button>
           <button class="btn btn-ghost" id="undo" type="button">Undo point</button>
           <button class="btn btn-ghost" id="reset" type="button">Clear</button>
@@ -396,7 +397,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   const els = {
     file: document.getElementById('file'), stage: document.getElementById('stage'),
     undo: document.getElementById('undo'), reset: document.getElementById('reset'),
-    crop: document.getElementById('crop'),
+    crop: document.getElementById('crop'), auto: document.getElementById('auto'),
     bri: document.getElementById('bri'), con: document.getElementById('con'),
     angle: document.getElementById('angle'), pill: document.getElementById('pill'),
     tilts: document.getElementById('tilts'), meaning: document.getElementById('meaning'),
@@ -556,6 +557,8 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
       }
       ctx.restore();
     });
+    drawAutoDots();
+    drawFrame();
     drawLoupe();
     update();
     scheduleSave();
@@ -987,6 +990,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
 
   // ---------- Curves ----------
   function resetCurves(list) {
+    autoDots = null;
     curves = (list && list.length ? list : [[]]).map(p => ({ pts: p.map(q => ({ ...q })), region: 'auto' }));
     active = 0; note = '';
   }
@@ -1084,6 +1088,10 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     ['Tap 4 of 4', 'Same vertebra: the <b>right</b> corner of its <b>bottom</b> edge']
   ];
   function renderTapNext() {
+    if (frame && mode !== 'manual') {
+      els.tapnext.innerHTML = `<span class="tn-done" aria-hidden="true">${frame.taps.length + 1}</span><span><b class="tn-step" style="color:#5fd3e8">${FRAME_TEXT[frame.taps.length]}</b> on the X-ray.</span>`;
+      return;
+    }
     if (mode === 'manual') { els.tapnext.innerHTML = '<span class="tn-done" aria-hidden="true">✓</span><span>Using the angles you typed in. Switch to <b>Measure on my X-ray</b> to mark lines.</span>'; return; }
     const n = cur().length, col = CURVE_COLORS[active];
     if (n < 4) {
@@ -1209,6 +1217,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     return best;
   }
   cv.addEventListener('pointerdown', e => {
+    if (frame) return frameTap(toCanvas(e));
     const p = toCanvas(e), h = hit(p);
     if (h) { drag = h; active = h.c; loupe = curves[h.c].pts[h.i]; cv.setPointerCapture(e.pointerId); draw(); }
     else if (cur().length < 4) { cur().push(p); drag = { c: active, i: cur().length - 1 }; loupe = p; note = ''; cv.setPointerCapture(e.pointerId); draw(); }
@@ -1227,6 +1236,155 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   els.undo.addEventListener('click', () => { cur().pop(); note = ''; draw(); });
   els.reset.addEventListener('click', () => { resetCurves(); draw(); });
   [els.bri, els.con].forEach(i => i.addEventListener('input', draw));
+
+  // ---------- Auto-measure (machine learning, runs in this browser) ----------
+  // A U-Net trained on the AASCE 2019 spine X-rays (ml/train.py) finds the 4 corners of
+  // T1–L5. The page then picks end vertebrae with the same rule as ml/cobb.py and puts
+  // the result into the normal draggable lines, so the person can check and correct it.
+  const MODEL_URL = 'model/spine-landmarks.onnx', MODEL_H = 512, MODEL_W = 256;
+  const ORT_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js';
+  let ortSession = null, autoDots = null;
+
+  function loadScript(src) {
+    return new Promise((res, rej) => {
+      const t = document.createElement('script'); t.src = src; t.onload = res;
+      t.onerror = () => rej(new Error('Could not load the model runtime. Check your connection.'));
+      document.head.appendChild(t);
+    });
+  }
+  async function getSession() {
+    if (ortSession) return ortSession;
+    if (!window.ort) await loadScript(ORT_URL);
+    ort.env.wasm.wasmPaths = ORT_URL.replace(/ort\.min\.js$/, '');
+    ortSession = await ort.InferenceSession.create(MODEL_URL, { executionProviders: ['wasm'] });
+    return ortSession;
+  }
+  // Same preprocessing as ml/dataset.py: greyscale, letterbox to 512 x 256 on black,
+  // then stretch contrast to 0..1.
+  function preprocess(src) {
+    const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height;
+    const k = Math.min(MODEL_H / sh, MODEL_W / sw), nw = Math.round(sw * k), nh = Math.round(sh * k);
+    const px = Math.floor((MODEL_W - nw) / 2), py = Math.floor((MODEL_H - nh) / 2);
+    const c = document.createElement('canvas'); c.width = MODEL_W; c.height = MODEL_H;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.fillStyle = '#000'; g.fillRect(0, 0, MODEL_W, MODEL_H);
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, px, py, nw, nh);
+    const d = g.getImageData(0, 0, MODEL_W, MODEL_H).data, n = MODEL_W * MODEL_H;
+    const grey = new Uint8Array(n), hist = new Array(256).fill(0);
+    for (let i = 0; i < n; i++) {
+      const v = (d[i * 4] * 299 + d[i * 4 + 1] * 587 + d[i * 4 + 2] * 114) / 1000 | 0;
+      grey[i] = v; hist[v]++;
+    }
+    // contrast stretch between the 1st and 99th percentile grey levels (ml/dataset.py to_array)
+    let acc = 0, lo = 0, hi = 255;
+    for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc / n >= 0.01) { lo = i; break; } }
+    acc = 0;
+    for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc / n >= 0.99) { hi = i; break; } }
+    hi = Math.max(hi, lo + 1);
+    const x = new Float32Array(n);
+    for (let i = 0; i < n; i++) x[i] = Math.min(1, Math.max(0, (grey[i] - lo) / (hi - lo)));
+    return { x, k, px, py };
+  }
+  // ml/cobb.py curves_from_landmarks: the biggest angle between any two endplates, then the
+  // same search above and below it for secondary curves.
+  function curvesFromLandmarks(pts, minSecondary = 5) {
+    const plates = [];
+    for (let v = 0; v < 17; v++) {
+      const q = pts.slice(v * 4, v * 4 + 4);
+      plates.push([q[0], q[1]], [q[2], q[3]]);
+    }
+    const t = plates.map(([a, b]) => tilt(a, b));
+    const pair = (lo, hi) => {
+      let best = [0, lo, lo];
+      for (let i = lo; i <= hi; i++) for (let j = i + 1; j <= hi; j++) {
+        let d = Math.abs(t[i] - t[j]); if (d > 90) d = 180 - d;
+        if (d > best[0]) best = [d, i, j];
+      }
+      return best;
+    };
+    const [a, i, j] = pair(0, 33), out = [[i, j, a]];
+    if (i >= 1) { const u = pair(0, i); if (u[0] >= minSecondary) out.unshift([u[1], u[2], u[0]]); }
+    if (j <= 32) { const l = pair(j, 33); if (l[0] >= minSecondary) out.push([l[1], l[2], l[0]]); }
+    return out.slice(0, MAX_CURVES).map(([u, l]) => [...plates[u], ...plates[l]]);
+  }
+  window.SpineAngle.curvesFromLandmarks = curvesFromLandmarks;
+  window.SpineAngle.preprocess = preprocess;
+  window.SpineAngle.frameBox = (a, b) => frameBox(a, b);
+
+  // Two taps frame the spine (top of the shoulders, top of the hip bones). Phone photos of a
+  // whole-body film show the neck and skull too, which the model would count as vertebrae,
+  // and the spine is too small in the frame; framing fixes both (see ml/inference.py).
+  let frame = null;                    // { taps: [] } while waiting for the two taps
+  const FRAME_TEXT = ['Tap the top of the shoulders', 'Now tap the top of the hip bones'];
+  function frameBox(a, b) {
+    let top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y);
+    const h0 = bot - top;
+    top = Math.max(0, top - 0.06 * h0); bot = Math.min(cv.height, bot + 0.12 * h0);
+    const h = bot - top, w = Math.min(cv.width, 0.64 * h), cx = (a.x + b.x) / 2;
+    const x = Math.min(Math.max(0, cx - w / 2), cv.width - w);
+    return { x, y: top, w, h };
+  }
+  function startFrame() {
+    if (frame) { frame = null; note = ''; els.auto.textContent = 'Auto-measure'; return draw(); }
+    frame = { taps: [] };
+    els.auto.textContent = 'Cancel';
+    note = 'Auto-measure: two taps tell it where the spine is. Roughly is fine.';
+    draw();
+  }
+  function frameTap(p) {
+    frame.taps.push(p);
+    if (frame.taps.length < 2) return draw();
+    const box = frameBox(frame.taps[0], frame.taps[1]);
+    frame = null;
+    autoMeasure(box);
+  }
+  function drawFrame() {
+    if (!frame) return;
+    const lw = Math.max(1.5, cv.width / 320);
+    ctx.save(); ctx.strokeStyle = '#5fd3e8'; ctx.lineWidth = lw; ctx.setLineDash([lw * 4, lw * 3]);
+    frame.taps.forEach(t => { ctx.beginPath(); ctx.moveTo(0, t.y); ctx.lineTo(cv.width, t.y); ctx.stroke(); });
+    ctx.restore();
+  }
+
+  async function autoMeasure(box) {
+    if (!source) return;
+    els.auto.disabled = true; els.auto.textContent = 'Measuring…';
+    try {
+      const sess = await getSession();
+      const sw = source.naturalWidth || source.width, toSrc = sw / cv.width;
+      const bx = { x: box.x * toSrc, y: box.y * toSrc, w: box.w * toSrc, h: box.h * toSrc };
+      const crop = document.createElement('canvas');
+      crop.width = Math.max(1, Math.round(bx.w)); crop.height = Math.max(1, Math.round(bx.h));
+      crop.getContext('2d').drawImage(source, bx.x, bx.y, bx.w, bx.h, 0, 0, crop.width, crop.height);
+      const { x, k, px, py } = preprocess(crop);
+      const out = await sess.run({ image: new ort.Tensor('float32', x, [1, 1, MODEL_H, MODEL_W]) });
+      const L = out.landmarks.data, C = out.confidence.data;
+      const pts = [];
+      for (let i = 0; i < 68; i++) {
+        pts.push({ x: ((L[i * 2] - px) / k + bx.x) / toSrc, y: ((L[i * 2 + 1] - py) / k + bx.y) / toSrc });
+      }
+      const conf = Array.from(C).reduce((s, v) => s + v, 0) / C.length;
+      resetCurves(curvesFromLandmarks(pts));
+      autoDots = pts;
+      note = conf < 0.35
+        ? 'Auto-measure is unsure about this image. Check each line sits on the right vertebra and drag to fix it, or try again with the two taps placed differently.'
+        : 'Lines placed automatically (blue dots are the vertebra corners it found). Check each line sits on the most tilted vertebra and drag any point to adjust.';
+    } catch (e) {
+      note = `Auto-measure didn't work here (${e.message}). You can still place the lines by hand.`;
+    } finally {
+      els.auto.disabled = false; els.auto.textContent = 'Auto-measure';
+      draw();
+    }
+  }
+  els.auto.addEventListener('click', startFrame);
+  function drawAutoDots() {
+    if (!autoDots) return;
+    ctx.save(); ctx.fillStyle = 'rgba(95,211,232,0.55)';
+    const r = Math.max(1.5, cv.width / 380);
+    autoDots.forEach(q => { ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.fill(); });
+    ctx.restore();
+  }
 
   // ---------- Auto-crop ----------
   // Finds the skeleton in a photo of a screen: bright, grey, textured pixels, minus flat UI,
@@ -1423,6 +1581,5 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   restore();
 })();
 </script>
-
 </body>
 </html>
