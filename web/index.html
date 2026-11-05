@@ -1343,6 +1343,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   window.SpineAngle.curvesFromLandmarks = curvesFromLandmarks;
   window.SpineAngle.preprocess = preprocess;
   window.SpineAngle.frameBox = (a, b) => frameBox(a, b);
+  window.SpineAngle.autoMeasure = t => autoMeasure(t);
 
   // Two taps frame the spine (top of the shoulders, top of the hip bones). Phone photos of a
   // whole-body film show the neck and skull too, which the model would count as vertebrae,
@@ -1413,30 +1414,68 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     ctx.restore();
   }
 
+  // Run the model on one box of the canvas; flip=true runs it mirrored and maps the points back.
+  async function runBox(sess, box, flip) {
+    const sw = source.naturalWidth || source.width, toSrc = sw / cv.width;
+    const bx = { x: box.x * toSrc, y: box.y * toSrc, w: box.w * toSrc, h: box.h * toSrc };
+    const crop = document.createElement('canvas');
+    crop.width = Math.max(1, Math.round(bx.w)); crop.height = Math.max(1, Math.round(bx.h));
+    const c2 = crop.getContext('2d');
+    if (flip) { c2.translate(crop.width, 0); c2.scale(-1, 1); }
+    c2.drawImage(source, bx.x, bx.y, bx.w, bx.h, 0, 0, crop.width, crop.height);
+    const { x, k, px, py } = preprocess(crop);
+    const out = await sess.run({ image: new ort.Tensor('float32', x, [1, 1, MODEL_H, MODEL_W]) });
+    const L = out.landmarks.data, C = out.confidence.data, sx = bx.w / crop.width;
+    const pts = [];
+    for (let i = 0; i < 68; i++) {
+      // corners are TL, TR, BL, BR: a mirrored run swaps left and right
+      const j = flip ? (i ^ 1) : i;
+      let cx = (L[j * 2] - px) / k; if (flip) cx = crop.width - cx;
+      pts.push({ x: (cx * sx + bx.x) / toSrc, y: ((L[j * 2 + 1] - py) / k * sx + bx.y) / toSrc });
+    }
+    return { pts, conf: Array.from(C).reduce((s, v) => s + v, 0) / C.length };
+  }
+  const median = a => { const b = [...a].sort((p, q) => p - q); return b[b.length >> 1]; };
+
   async function autoMeasure(taps) {
     if (!source) return;
     taps = taps.map(t => ({ ...t }));
-    const box = frameBox(taps[0], taps[1]);
     els.auto.disabled = true; els.auto.textContent = 'Measuring…';
     try {
       const sess = await getSession();
-      const sw = source.naturalWidth || source.width, toSrc = sw / cv.width;
-      const bx = { x: box.x * toSrc, y: box.y * toSrc, w: box.w * toSrc, h: box.h * toSrc };
-      const crop = document.createElement('canvas');
-      crop.width = Math.max(1, Math.round(bx.w)); crop.height = Math.max(1, Math.round(bx.h));
-      crop.getContext('2d').drawImage(source, bx.x, bx.y, bx.w, bx.h, 0, 0, crop.width, crop.height);
-      const { x, k, px, py } = preprocess(crop);
-      const out = await sess.run({ image: new ort.Tensor('float32', x, [1, 1, MODEL_H, MODEL_W]) });
-      const L = out.landmarks.data, C = out.confidence.data;
-      const pts = [];
-      for (let i = 0; i < 68; i++) {
-        pts.push({ x: ((L[i * 2] - px) / k + bx.x) / toSrc, y: ((L[i * 2 + 1] - py) / k + bx.y) / toSrc });
+      // 1. find the spine: run on the full width between the lines, take the middle of the vertebrae
+      const box = frameBox(taps[0], taps[1]);
+      const wide = await runBox(sess, { x: 0, y: box.y, w: cv.width, h: box.h }, false);
+      const cx = median(wide.pts.map(q => q.x));
+      if (!(window.SpineAngle.opts || {}).norecentre) taps.forEach(t => { t.x = cx; });
+      // 2. measure 9 slightly different framings and average each vertebra's corners, matched by
+      //    height, so one rough line placement can't swing the angle (test-time ensembling)
+      const O = window.SpineAngle.opts || {}, span = Math.abs(taps[1].y - taps[0].y), up = taps[0].y < taps[1].y ? 1 : -1;
+      const TOP = O.single ? [0] : [-0.06, 0, 0.06], BOT = O.single ? [0] : [-0.04, 0.04, 0.1];
+      const runs = [];
+      for (const dt of TOP) for (const db of BOT) {
+        const a = { x: cx, y: taps[0].y + up * dt * span }, b = { x: cx, y: taps[1].y + up * db * span };
+        runs.push(await runBox(sess, frameBox(a, b), false));
       }
-      const conf = Array.from(C).reduce((s, v) => s + v, 0) / C.length;
+      const ctr = r => Array.from({ length: 17 }, (_, v) => r.pts.slice(v * 4, v * 4 + 4).reduce((s, q) => s + q.y / 4, 0));
+      const ref = runs[O.single ? 0 : 4], rc = ctr(ref);
+      const gap = median(rc.slice(1).map((y, i) => y - rc[i]));
+      const pts = ref.pts.map(q => ({ x: 0, y: 0, n: 0 }));
+      runs.forEach(r => {
+        const c = ctr(r);
+        rc.forEach((y, v) => {
+          let best = -1, bd = gap / 2;
+          c.forEach((y2, u) => { if (Math.abs(y2 - y) < bd) { bd = Math.abs(y2 - y); best = u; } });
+          if (best < 0) return;
+          for (let k = 0; k < 4; k++) { const q = r.pts[best * 4 + k], o = pts[v * 4 + k]; o.x += q.x; o.y += q.y; o.n++; }
+        });
+      });
+      pts.forEach((o, i) => { if (o.n) { o.x /= o.n; o.y /= o.n; } else { o.x = ref.pts[i].x; o.y = ref.pts[i].y; } delete o.n; });
+      const conf = runs.reduce((s, r) => s + r.conf, 0) / runs.length;
       resetCurves(curvesFromLandmarks(pts));
       autoDots = pts; guides = taps;
       note = conf < 0.35
-        ? 'Auto-measure is unsure about this image. Check each line sits on the right vertebra and drag to fix it, or try again with the two taps placed differently.'
+        ? 'Auto-measure is unsure about this image. Check each line sits on the right vertebra and drag to fix it, or try again with the two lines placed differently.'
         : 'Lines placed automatically (blue dots are the vertebra corners it found). Check each line sits on the most tilted vertebra and drag any point to adjust. Drag the dashed Shoulders or Hips line to re-measure; Undo goes back a step.';
     } catch (e) {
       note = `Auto-measure didn't work here (${e.message}). You can still place the lines by hand.`;
