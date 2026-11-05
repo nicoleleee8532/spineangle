@@ -3,8 +3,14 @@
     python evaluate.py --weights checkpoints/best.pt --data /path/to/boostnet_labeldata
     python evaluate.py --weights checkpoints/best.pt --synthetic 32
 
-Writes results.csv (per image) and prints MRE, Cobb MAE per curve, SMAPE and
-severity-band accuracy. Add --plot for a Bland-Altman chart (needs matplotlib).
+Writes results.csv (per image) and prints landmark error, Cobb MAE per curve,
+SMAPE and severity-band accuracy. Add --plot for a Bland-Altman chart (needs matplotlib).
+
+Two ways of scoring the angles:
+  * challenge: the AASCE formula (aasce_official.py) on our landmarks vs the
+    labels in angles.csv, so SMAPE is comparable with published results;
+  * app: the endplate method the website uses (cobb.py), on our landmarks vs
+    the same method on the doctors' landmarks.
 """
 from __future__ import annotations
 
@@ -13,7 +19,8 @@ import csv
 
 import numpy as np
 
-from cobb import aasce_angles, severity_band, smape
+from aasce_official import official_angles
+from cobb import curves_from_landmarks, severity_band, smape
 from dataset import make_synthetic, read_aasce
 from inference import Predictor
 
@@ -30,29 +37,37 @@ def main():
     samples = make_synthetic(args.synthetic, seed=999) if args.synthetic else read_aasce(args.data, "test")
     pred_fn = Predictor(args.weights)
 
-    rows, P, T, mre = [], [], [], []
+    rows, P, T, mre, app_p, app_t = [], [], [], [], [], []
     for s in samples:
         r = pred_fn(s.image)
         lm = np.array(r["landmarks"])
-        p = aasce_angles(lm)
+        p = official_angles(lm, s.image.height)
         P.append(p)
         T.append(s.angles)
-        mre.append(np.linalg.norm(lm - s.landmarks, axis=1).mean())
-        rows.append([s.name, *np.round(p, 1), *np.round(s.angles, 1), round(mre[-1], 1), r["low_confidence"]])
+        app_p.append(curves_from_landmarks(lm)[0].cobb_deg)
+        app_t.append(curves_from_landmarks(s.landmarks)[0].cobb_deg)
+        # landmark error as % of image height, since the films differ in size
+        mre.append(np.linalg.norm(lm - s.landmarks, axis=1).mean() / s.image.height * 100)
+        rows.append([s.name, *np.round(p, 1), *np.round(s.angles, 1), round(app_p[-1], 1), round(app_t[-1], 1),
+                     round(mre[-1], 2), r["low_confidence"]])
 
-    P, T = np.array(P), np.array(T)
+    P, T, app_p, app_t = np.array(P), np.array(T), np.array(app_p), np.array(app_t)
     mae = np.abs(P - T).mean(axis=0)
-    band_acc = np.mean([severity_band(p) == severity_band(t) for p, t in zip(P.max(1), T.max(1))])
-    print(f"images            {len(samples)}")
-    print(f"landmark MRE      {np.mean(mre):.1f} px")
-    print(f"Cobb MAE (PT/MT/TL) {mae[0]:.2f}° / {mae[1]:.2f}° / {mae[2]:.2f}°")
-    print(f"SMAPE             {smape(P, T):.2f} %")
-    print(f"band accuracy     {band_acc * 100:.1f} %")
+    big = np.abs(P.max(1) - T.max(1))
+    app = np.abs(app_p - app_t)
+    band_acc = np.mean([severity_band(p) == severity_band(t) for p, t in zip(app_p, app_t)])
+    print(f"images                     {len(samples)}")
+    print(f"landmark error             {np.mean(mre):.2f} % of image height")
+    print(f"challenge Cobb MAE (3 curves) {mae[0]:.2f}° / {mae[1]:.2f}° / {mae[2]:.2f}°")
+    print(f"challenge SMAPE            {smape(P, T):.2f} %")
+    print(f"largest curve MAE          {big.mean():.2f}°  (within 5°: {np.mean(big <= 5) * 100:.0f}%)")
+    print(f"app method MAE             {app.mean():.2f}°  (within 5°: {np.mean(app <= 5) * 100:.0f}%, within 10°: {np.mean(app <= 10) * 100:.0f}%)")
+    print(f"app severity band match    {band_acc * 100:.1f} %")
 
     with open(args.out, "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["image", "pred_pt", "pred_mt", "pred_tl", "true_pt", "true_mt", "true_tl",
-                    "mre_px", "low_confidence"])
+                    "app_pred", "app_true", "landmark_err_pct_height", "low_confidence"])
         w.writerows(rows)
     print(f"per-image results -> {args.out}")
 
