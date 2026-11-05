@@ -214,6 +214,8 @@ canvas#cv { display: block; max-width: 100%; max-height: 72vh; touch-action: non
 .cicon { width: 52px; height: 34px; flex: none; }
 .cicon .iv { fill: #a8b3bb; stroke: #d7dee3; stroke-width: 0.8; }
 .cicon .ic { fill: none; stroke: #8b98a2; stroke-width: 1; }
+.fguide { width: 74px; flex: none; }
+.tapnext .lnk { background: none; border: 0; color: #5fd3e8; text-decoration: underline; cursor: pointer; padding: 0; font: inherit; }
 .tn-done { width: 28px; height: 28px; flex: none; border-radius: 50%; display: grid; place-items: center; background: #2f7d4f; color: #fff; font-weight: 700; }
 .modes { margin-bottom: 12px; }
 .shapes { margin: 4px 0 10px; }
@@ -1103,7 +1105,10 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   ];
   function renderTapNext() {
     if (frame && mode !== 'manual') {
-      els.tapnext.innerHTML = `<span class="tn-done" aria-hidden="true">${frame.taps.length + 1}</span><span><b class="tn-step" style="color:#5fd3e8">${FRAME_TEXT[frame.taps.length]}</b> on the X-ray.</span>`;
+      els.tapnext.innerHTML = FRAME_FIG + `<span><b style="color:#5fd3e8">Drag the two dashed lines</b> (or tap where they should go):<br>
+        <b>Shoulders</b>: where the neck meets the chest, level with the collarbones (the thin bones running sideways to the tops of the arms).<br>
+        <b>Hips</b>: the top edge of the pelvis, the wide butterfly-shaped bone at the bottom of the spine.<br>
+        Shoulders or hips lopsided? That's normal with scoliosis. The lines only mark where the spine starts and ends; they don't measure any tilt. Watch the point where each line crosses the spine, and if one side is higher, go halfway between. Roughly is fine. Then press <b>Measure</b>. <button class="lnk" type="button" data-fcancel>Cancel</button></span>`;
       return;
     }
     if (mode === 'manual') { els.tapnext.innerHTML = '<span class="tn-done" aria-hidden="true">✓</span><span>Using the angles you typed in. Switch to <b>Measure on my X-ray</b> to mark lines.</span>'; return; }
@@ -1231,7 +1236,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     return best;
   }
   cv.addEventListener('pointerdown', e => {
-    if (frame) return frameTap(toCanvas(e));
+    if (frame) return frameTap(e);
     const p = toCanvas(e), h = hit(p), g = h ? -1 : hitGuide(p);
     if (g >= 0) { snap(); drag = { guide: g, moved: false }; cv.setPointerCapture(e.pointerId); return draw(); }
     if (h || cur().length < 4) snap();
@@ -1258,7 +1263,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     if (!drag) return;
     const g = drag; drag = null; loupe = null;
     // moving a shoulder or hip line measures again with the new framing
-    if (g.guide !== undefined) { if (g.moved) autoMeasure(guides); else undoStack.pop(); }
+    if (g.guide !== undefined && !frame) { if (g.moved) autoMeasure(guides); else undoStack.pop(); }
     draw();
   };
   cv.addEventListener('pointerup', endDrag);
@@ -1361,7 +1366,20 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     guides.forEach((g, i) => { const d = Math.abs(p.y - g.y); if (d < bd) { bd = d; best = i; } });
     return best;
   }
-  const FRAME_TEXT = ['Tap the top of the shoulders', 'Now tap the top of the hip bones'];
+  // Little skeleton showing where the two lines go
+  const FRAME_FIG = `<svg class="fguide" viewBox="0 0 90 140" role="img" aria-label="Where the shoulder and hip lines go">
+    <rect width="90" height="140" rx="6" fill="#0b1014"/>
+    <g fill="none" stroke="#c9d2d8" stroke-width="1.6" stroke-linecap="round">
+      <ellipse cx="45" cy="13" rx="10" ry="11"/>
+      <path d="M45 25v83"/><path d="M42 30h6M42 36h6M41 46h8M41 56h8M41 66h8M41 76h8M40 86h10M40 96h10"/>
+      <path d="M44 34 20 30M46 34 70 30"/><path d="M20 30q-6 6-4 16M70 30q6 6 4 16"/>
+      <path d="M44 42q-22 2-24 22q0 16 10 22M46 42q22 2 24 22q0 16-10 22"/>
+      <path d="M44 104q-20-10-28-4q-4 12 10 22q10 6 18 0M46 104q20-10 28-4q4 12-10 22q-10 6-18 0"/>
+    </g>
+    <g stroke="#5fd3e8" stroke-width="1.6" stroke-dasharray="4 3"><path d="M2 29h86M2 99h86"/></g>
+    <g fill="#5fd3e8" font-size="8" font-family="sans-serif" font-weight="700"><text x="3" y="26">Shoulders</text><text x="3" y="96">Hips</text></g>
+  </svg>`;
+  els.tapnext.addEventListener('click', e => { if (e.target.closest('[data-fcancel]')) { frame = null; note = ''; els.auto.textContent = 'Auto-measure'; draw(); } });
   function frameBox(a, b) {
     let top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y);
     const h0 = bot - top;
@@ -1371,22 +1389,21 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     return { x, y: top, w, h };
   }
   function startFrame() {
-    if (frame) { frame = null; note = ''; els.auto.textContent = 'Auto-measure'; return draw(); }
-    frame = { taps: [] };
-    els.auto.textContent = 'Cancel';
-    note = 'Auto-measure: two taps tell it where the spine is. Roughly is fine.';
+    if (frame) { frame = null; snap(); return autoMeasure(guides); }      // second press: Measure
+    frame = {};
+    if (!guides) guides = [{ x: cv.width / 2, y: cv.height * 0.17 }, { x: cv.width / 2, y: cv.height * 0.7 }];
+    els.auto.textContent = 'Measure';
+    note = 'Auto-measure: the two lines tell it where the spine starts and ends, so it ignores the neck and skull.';
     draw();
   }
-  function frameTap(p) {
-    frame.taps.push(p);
-    if (frame.taps.length < 2) return draw();
-    const taps = frame.taps;
-    frame = null;
-    snap();
-    autoMeasure(taps);
+  function frameTap(e) {                  // while placing: grab a line, or move the nearer one here
+    const p = toCanvas(e);
+    let g = hitGuide(p);
+    if (g < 0) { g = Math.abs(p.y - guides[0].y) < Math.abs(p.y - guides[1].y) ? 0 : 1; guides[g] = p; }
+    drag = { guide: g, moved: true }; cv.setPointerCapture(e.pointerId); draw();
   }
   function drawFrame() {
-    const lines = frame ? frame.taps : guides;
+    const lines = guides;
     if (!lines) return;
     const lw = Math.max(1.5, cv.width / 320), fs = Math.max(11, cv.width / 34);
     ctx.save(); ctx.strokeStyle = ctx.fillStyle = '#5fd3e8'; ctx.lineWidth = lw;
@@ -1397,7 +1414,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
       ctx.setLineDash([lw * 4, lw * 3]);
       ctx.beginPath(); ctx.moveTo(0, t.y); ctx.lineTo(cv.width, t.y); ctx.stroke();
       ctx.setLineDash([]);
-      if (!frame) {                                   // grip handle + label so it reads as draggable
+      {                                               // grip handle + label so it reads as draggable
         ctx.beginPath(); ctx.arc(t.x, t.y, lw * (on ? 6 : 4.5), 0, Math.PI * 2); ctx.fill();
         ctx.fillText(GUIDE_TEXT[i] + ' ↕', lw * 3, t.y - lw * 2);
       }
