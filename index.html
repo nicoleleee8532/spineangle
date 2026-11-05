@@ -1241,7 +1241,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   // A U-Net trained on the AASCE 2019 spine X-rays (ml/train.py) finds the 4 corners of
   // T1–L5. The page then picks end vertebrae with the same rule as ml/cobb.py and puts
   // the result into the normal draggable lines, so the person can check and correct it.
-  const MODEL_URL = 'model/spine-landmarks.onnx', MODEL_H = 512, MODEL_W = 256;
+  const MODEL_URL = 'web/model/spine-landmarks.onnx', MODEL_H = 512, MODEL_W = 256;
   const ORT_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js';
   let ortSession = null, autoDots = null;
 
