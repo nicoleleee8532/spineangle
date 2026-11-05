@@ -549,6 +549,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
       ctx.restore();
     });
     drawAutoDots();
+    drawFrame();
     drawLoupe();
     update();
     scheduleSave();
@@ -1078,6 +1079,10 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     ['Tap 4 of 4', 'Same vertebra: the <b>right</b> corner of its <b>bottom</b> edge']
   ];
   function renderTapNext() {
+    if (frame && mode !== 'manual') {
+      els.tapnext.innerHTML = `<span class="tn-done" aria-hidden="true">${frame.taps.length + 1}</span><span><b class="tn-step" style="color:#5fd3e8">${FRAME_TEXT[frame.taps.length]}</b> on the X-ray.</span>`;
+      return;
+    }
     if (mode === 'manual') { els.tapnext.innerHTML = '<span class="tn-done" aria-hidden="true">✓</span><span>Using the angles you typed in. Switch to <b>Measure on my X-ray</b> to mark lines.</span>'; return; }
     const n = cur().length, col = CURVE_COLORS[active];
     if (n < 4) {
@@ -1203,6 +1208,7 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
     return best;
   }
   cv.addEventListener('pointerdown', e => {
+    if (frame) return frameTap(toCanvas(e));
     const p = toCanvas(e), h = hit(p);
     if (h) { drag = h; active = h.c; loupe = curves[h.c].pts[h.i]; cv.setPointerCapture(e.pointerId); draw(); }
     else if (cur().length < 4) { cur().push(p); drag = { c: active, i: cur().length - 1 }; loupe = p; note = ''; cv.setPointerCapture(e.pointerId); draw(); }
@@ -1295,34 +1301,74 @@ footer { margin-top: 28px; color: var(--muted); font-size: 0.8rem; max-width: 80
   }
   window.SpineAngle.curvesFromLandmarks = curvesFromLandmarks;
   window.SpineAngle.preprocess = preprocess;
+  window.SpineAngle.frameBox = (a, b) => frameBox(a, b);
 
-  async function autoMeasure() {
+  // Two taps frame the spine (top of the shoulders, top of the hip bones). Phone photos of a
+  // whole-body film show the neck and skull too, which the model would count as vertebrae,
+  // and the spine is too small in the frame; framing fixes both (see ml/inference.py).
+  let frame = null;                    // { taps: [] } while waiting for the two taps
+  const FRAME_TEXT = ['Tap the top of the shoulders', 'Now tap the top of the hip bones'];
+  function frameBox(a, b) {
+    let top = Math.min(a.y, b.y), bot = Math.max(a.y, b.y);
+    const h0 = bot - top;
+    top = Math.max(0, top - 0.06 * h0); bot = Math.min(cv.height, bot + 0.12 * h0);
+    const h = bot - top, w = Math.min(cv.width, 0.64 * h), cx = (a.x + b.x) / 2;
+    const x = Math.min(Math.max(0, cx - w / 2), cv.width - w);
+    return { x, y: top, w, h };
+  }
+  function startFrame() {
+    if (frame) { frame = null; note = ''; els.auto.textContent = 'Auto-measure'; return draw(); }
+    frame = { taps: [] };
+    els.auto.textContent = 'Cancel';
+    note = 'Auto-measure: two taps tell it where the spine is. Roughly is fine.';
+    draw();
+  }
+  function frameTap(p) {
+    frame.taps.push(p);
+    if (frame.taps.length < 2) return draw();
+    const box = frameBox(frame.taps[0], frame.taps[1]);
+    frame = null;
+    autoMeasure(box);
+  }
+  function drawFrame() {
+    if (!frame) return;
+    const lw = Math.max(1.5, cv.width / 320);
+    ctx.save(); ctx.strokeStyle = '#5fd3e8'; ctx.lineWidth = lw; ctx.setLineDash([lw * 4, lw * 3]);
+    frame.taps.forEach(t => { ctx.beginPath(); ctx.moveTo(0, t.y); ctx.lineTo(cv.width, t.y); ctx.stroke(); });
+    ctx.restore();
+  }
+
+  async function autoMeasure(box) {
     if (!source) return;
-    const label = els.auto.textContent;
     els.auto.disabled = true; els.auto.textContent = 'Measuring…';
     try {
       const sess = await getSession();
-      const { x, k, px, py } = preprocess(source);
+      const sw = source.naturalWidth || source.width, toSrc = sw / cv.width;
+      const bx = { x: box.x * toSrc, y: box.y * toSrc, w: box.w * toSrc, h: box.h * toSrc };
+      const crop = document.createElement('canvas');
+      crop.width = Math.max(1, Math.round(bx.w)); crop.height = Math.max(1, Math.round(bx.h));
+      crop.getContext('2d').drawImage(source, bx.x, bx.y, bx.w, bx.h, 0, 0, crop.width, crop.height);
+      const { x, k, px, py } = preprocess(crop);
       const out = await sess.run({ image: new ort.Tensor('float32', x, [1, 1, MODEL_H, MODEL_W]) });
       const L = out.landmarks.data, C = out.confidence.data;
-      const sw = source.naturalWidth || source.width, toCv = cv.width / sw;
       const pts = [];
-      for (let i = 0; i < 68; i++) pts.push({ x: (L[i * 2] - px) / k * toCv, y: (L[i * 2 + 1] - py) / k * toCv });
+      for (let i = 0; i < 68; i++) {
+        pts.push({ x: ((L[i * 2] - px) / k + bx.x) / toSrc, y: ((L[i * 2 + 1] - py) / k + bx.y) / toSrc });
+      }
       const conf = Array.from(C).reduce((s, v) => s + v, 0) / C.length;
       resetCurves(curvesFromLandmarks(pts));
       autoDots = pts;
-      note = conf < 0.3
-        ? 'Auto-measure is unsure about this image. Check each line sits on the right vertebra, and drag to fix it.'
-        : 'Lines placed automatically. Check they sit on the most tilted vertebrae and drag any point to adjust.';
-      draw();
+      note = conf < 0.35
+        ? 'Auto-measure is unsure about this image. Check each line sits on the right vertebra and drag to fix it, or try again with the two taps placed differently.'
+        : 'Lines placed automatically (blue dots are the vertebra corners it found). Check each line sits on the most tilted vertebra and drag any point to adjust.';
     } catch (e) {
       note = `Auto-measure didn't work here (${e.message}). You can still place the lines by hand.`;
-      draw();
     } finally {
-      els.auto.disabled = false; els.auto.textContent = label;
+      els.auto.disabled = false; els.auto.textContent = 'Auto-measure';
+      draw();
     }
   }
-  els.auto.addEventListener('click', autoMeasure);
+  els.auto.addEventListener('click', startFrame);
   function drawAutoDots() {
     if (!autoDots) return;
     ctx.save(); ctx.fillStyle = 'rgba(95,211,232,0.55)';
